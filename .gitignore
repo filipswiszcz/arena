@@ -1,0 +1,16 @@
+# output files
+*
+!/**/
+!*.*
+
+# build files xyari XYARI
+build
+
+# xcode debug files
+*.dSYM
+
+# vscode files
+.vscode
+
+# macos files
+.DS_Store
