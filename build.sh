@@ -4,7 +4,7 @@ set -e
 
 mkdir -p build
 
-if [ "$(name)" == "Darwin" ]; then
+if [ "$(uname)" == "Darwin" ]; then
     clang src/game.c -o build/game -std=c99 -Wall -Wextra \
         -I./lib -lglfw -framework Cocoa -framework OpenGL -framework IOKit
 else
