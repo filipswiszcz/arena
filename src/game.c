@@ -18,6 +18,54 @@
 
 #define ASSERT(_e, ...) if (!(_e)) {fprintf(stderr, __VA_ARGS__); exit(1);}
 
+// SHADER
+
+typedef struct shader {
+    uint32_t ids[2];
+    uint32_t program;
+} shader_t;
+
+void _shader_read(char *content, char *filepath) {
+    FILE *file = fopen(filepath, "r");
+    ASSERT(file != NULL, "Failed to read shader file: %s", filepath);
+
+    fseek(file, 0, SEEK_END);
+    size_t size = ftell(file);
+    rewind(file);
+
+    content = (char*) malloc(size + 1);
+    fread(content, 1, size, file);
+    content[size] = '\0';
+    
+    fclose(file);
+}
+
+void _shader_compile(uint32_t *id, uint32_t type, char *content) {
+    *id = glCreateShader(type);
+    
+    const char *copy = content;
+    glShaderSource((uint32_t) &id, 1, &copy, NULL);
+    glCompileShader((uint32_t) &id);
+
+    free(content);
+}
+
+void shader_create(shader_t *shader, char *vertpath, char *fragpath) {
+    char *vertcont, *fragcont;
+    _shader_read(vertcont, vertpath);
+    _shader_read(fragcont, fragpath);
+
+    _shader_compile(&shader -> ids[0], GL_VERTEX_SHADER, vertcont);
+    _shader_compile(&shader -> ids[1], GL_FRAGMENT_SHADER, fragcont);
+
+    shader -> program = glCreateProgram();
+
+    glAttachShader(shader -> program, shader -> ids[0]);
+    glAttachShader(shader -> program, shader -> ids[1]);
+
+    glLinkProgram(shader -> program);
+}
+
 // GAME
 
 static struct {
