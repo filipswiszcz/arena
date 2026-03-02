@@ -7,6 +7,7 @@
 #ifdef __APPLE__
     #define GL_SILENCE_DEPRECATION
     #define GLFW_INCLUDE_GLCOREARB
+    #include <GLFW/glfw3.h>
 #else
     #include <GL/glew.h>
     #include <GLFW/glfw3.h>
@@ -27,7 +28,7 @@ typedef struct shader {
 
 void _shader_read(char *content, char *filepath) {
     FILE *file = fopen(filepath, "r");
-    ASSERT(file != NULL, "Failed to read shader file: %s", filepath);
+    ASSERT(file != NULL, "FILE_READ_ERROR: %s", filepath);
 
     fseek(file, 0, SEEK_END);
     size_t size = ftell(file);
@@ -43,15 +44,25 @@ void _shader_read(char *content, char *filepath) {
 void _shader_compile(uint32_t *id, uint32_t type, char *content) {
     *id = glCreateShader(type);
     
-    const char *copy = content;
-    glShaderSource((uint32_t) &id, 1, &copy, NULL);
-    glCompileShader((uint32_t) &id);
+    glShaderSource((uint64_t) &id, 1, content, NULL);
+    glCompileShader((uint64_t) &id);
 
     free(content);
+
+#ifdef DEBUG
+    int32_t params;
+    glGetShaderiv(*id, GL_COMPILE_STATUS, &params);
+    if (params == 0) {
+        char log[512];
+        glGetShaderInfoLog(*id, 512, NULL, log);
+        printf("SHADER_COMPILE_ERROR: %s\n", log);
+        return;
+    }
+#endif
 }
 
 void shader_create(shader_t *shader, char *vertpath, char *fragpath) {
-    char *vertcont, *fragcont;
+    char *vertcont = NULL, *fragcont = NULL;
     _shader_read(vertcont, vertpath);
     _shader_read(fragcont, fragpath);
 
@@ -70,6 +81,13 @@ void shader_create(shader_t *shader, char *vertpath, char *fragpath) {
 
 static struct {
     GLFWwindow *window;
+
+    struct {} camera;
+
+    struct {} player;
+
+    struct {} enemy;
+
 } context;
 
 // TODO
@@ -80,7 +98,7 @@ static struct {
 
 void game_init(void) {
     // GLFW
-    ASSERT(glfwInit(), "Failed to initialize OpenGL!");
+    ASSERT(glfwInit(), "OPENGL_INIT_ERROR");
 
     glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 4);
     glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 1);
@@ -90,7 +108,7 @@ void game_init(void) {
 #endif
 
     context.window = glfwCreateWindow(WINDOW_WIDTH, WINDOW_HEIGHT, WINDOW_NAME, NULL, NULL);
-    ASSERT(context.window, "Failed to create GLFW window!");
+    ASSERT(context.window, "GLFW_WINDOW_CREATE_ERROR");
 
     glfwMakeContextCurrent(context.window);
     // glfwSetInputMode(context.window, GLFW_CURSOR, GLFW_CURSOR_DISABLED);
@@ -99,7 +117,7 @@ void game_init(void) {
 #ifndef __APPLE__
     glewExperimental = 1;
     int32_t glew_err = glewInit();
-    ASSERT(glew_err == 0 || glew_err == 4, "Failed to initialize GLEW!");
+    ASSERT(glew_err == 0 || glew_err == 4, "GLEW_INIT_ERROR");
 #endif
 
     // OPENGL
@@ -107,6 +125,11 @@ void game_init(void) {
     // glEnable(GL_PROGRAM_POINT_SIZE);
     // glPolygonMode(GL_FRONT_AND_BACK, GL_LINE);
     glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
+
+    // SHADER
+    shader_t shader = {0};
+    shader_create(&shader, "shader.vs", "shader.fs");
+
 }
 
 void game_update(void) {
