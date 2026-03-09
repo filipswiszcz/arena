@@ -2,7 +2,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 
-// #include <libmath/math.h>
+#include <libmath/math.h>
 
 #ifdef __APPLE__
     #define GL_SILENCE_DEPRECATION
@@ -77,12 +77,90 @@ void shader_create(shader_t *shader, char *vertpath, char *fragpath) {
     glLinkProgram(shader -> program);
 }
 
+void shader_use(shader_t *shader) {
+    glUseProgram(shader -> program);
+}
+
+void shader_set_int(shader_t *shader, char *name, int val) {
+    glUniform1i(glGetUniformLocation(shader -> program, name), val);
+}
+
+void shader_set_float(shader_t *shader, char *name, float val) {
+    glUniform1f(glGetUniformLocation(shader -> program, name), val);
+}
+
+void shader_set_vec3(shader_t *shader, char *name, vec3_t vec) {
+    glUniform3f(glGetUniformLocation(shader -> program, name), vec.x, vec.y, vec.z);
+}
+
+void shader_set_mat4(shader_t *shader, char *name, mat4_t mat) {
+    glUniformMatrix4fv(glGetUniformLocation(shader -> program, name), 1, GL_FALSE, &mat.m[0][0]);
+}
+
+// RENDERER
+
+typedef struct sprite {
+    uint32_t texture;
+    vec2_t position, size;
+    float rotation;
+    vec3_t color;
+} sprite_t;
+
+typedef struct renderer {
+    shader_t shader;
+    uint32_t vao, vbo;
+} renderer_t;
+
+void renderer_init(renderer_t *renderer) {
+    vec4_t vertices[] = {
+        vec4(0.0f, 1.0f, 0.0f, 1.0f),
+        vec4(1.0f, 0.0f, 1.0f, 0.0f),
+        vec4(0.0f, 0.0f, 0.0f, 0.0f), 
+        vec4(0.0f, 1.0f, 0.0f, 1.0f),
+        vec4(1.0f, 1.0f, 1.0f, 1.0f),
+        vec4(1.0f, 0.0f, 1.0f, 0.0f)
+    };
+    
+    glGenVertexArrays(1, &renderer -> vao);
+    glGenBuffers(1, &renderer -> vbo);
+
+    glBindVertexArray(renderer -> vao);
+    
+    glBindBuffer(GL_ARRAY_BUFFER, renderer -> vbo);
+    glBufferData(GL_ARRAY_BUFFER, sizeof(vertices), vertices, GL_STATIC_DRAW);
+
+    glVertexAttribPointer(0, 4, GL_FLOAT, GL_FALSE, sizeof(vec4_t), (void*) 0);
+    glEnableVertexAttribArray(0);
+
+    glBindBuffer(GL_ARRAY_BUFFER, 0);  
+    glBindVertexArray(0);
+}
+
+void renderer_draw(renderer_t *renderer, sprite_t *sprite) {
+    shader_use(renderer -> shader);
+
+    mat4_t model = mat4(1.0f);
+    model = translate(model, vec3(sprite -> position.x, sprite -> position.y, 0.0f));
+    model = translate(model, vec3(sprite -> size.x * 0.5f, sprite -> size.y * 0.5f, 0.0f));
+    model = rotate(model, radians(sprite -> rotation), vec3(0.0f, 0.0f, 1.0f));
+    model = translate(model, vec3(sprite -> size.x * (-0.5f), sprite -> size * (-0.5f), 0.0f));
+    model = scale(model, vec3(sprite -> size.x, sprite -> size.y, 1.0f));
+
+    shader_set_mat4(&renderer -> shader, "u_Model", model);
+    shader_set_vec3(&renderer -> shader, "u_Color", sprite -> color);
+
+    glActiveTexture(GL_TEXTURE0);
+    // bind texture from sprit
+
+    glBindVertexArray(renderer -> vao);
+    glDrawArrays(GL_TRIANGLES, 0, 6);
+    glBindVertexArray(0);
+}
+
 // GAME
 
 static struct {
     GLFWwindow *window;
-
-    struct {} camera;
 
     struct {} player;
 
