@@ -15,7 +15,7 @@
 
 #define WINDOW_WIDTH 800
 #define WINDOW_HEIGHT 600
-#define WINDOW_NAME "BattleArena 2D (Build v0.0.1)"
+#define WINDOW_NAME "BattleArena 2D (Build v0.0.2)"
 
 #define ASSERT(_e, ...) if (!(_e)) {fprintf(stderr, __VA_ARGS__); exit(1);}
 
@@ -43,9 +43,9 @@ void _shader_read(char *content, char *filepath) {
 
 void _shader_compile(uint32_t *id, uint32_t type, char *content) {
     *id = glCreateShader(type);
-    
-    glShaderSource((uint64_t) &id, 1, content, NULL);
-    glCompileShader((uint64_t) &id);
+
+    glShaderSource(*id, 1, &content, NULL);
+    glCompileShader(*id);
 
     free(content);
 
@@ -99,6 +99,35 @@ void shader_set_mat4(shader_t *shader, char *name, mat4_t mat) {
 
 // RENDERER
 
+typedef struct texture {
+    uint32_t id;
+    uint32_t width, height;
+    uint32_t format;
+    uint32_t wraps, wrapt;
+    uint32_t fmin, fmax;
+} texture_t;
+
+void texture_init(texture_t *texture, uint32_t width, uint32_t height, unsigned char *data) {
+    glGenTextures(1, &texture -> id);
+
+    texture -> width = width;
+    texture -> height = height;
+
+    glBindTexture(GL_TEXTURE_2D, texture -> id);
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, width, height, 0, GL_RGB, GL_UNSIGNED_BYTE, data);
+
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+
+    glBindTexture(GL_TEXTURE_2D, 0);
+}
+
+void texture_bind(texture_t *texture) {
+    glBindTexture(GL_TEXTURE_2D, 0);
+}
+
 typedef struct sprite {
     uint32_t texture;
     vec2_t position, size;
@@ -137,14 +166,14 @@ void renderer_init(renderer_t *renderer) {
 }
 
 void renderer_draw(renderer_t *renderer, sprite_t *sprite) {
-    shader_use(renderer -> shader);
+    shader_use(&renderer -> shader);
 
     mat4_t model = mat4(1.0f);
-    model = translate(model, vec3(sprite -> position.x, sprite -> position.y, 0.0f));
-    model = translate(model, vec3(sprite -> size.x * 0.5f, sprite -> size.y * 0.5f, 0.0f));
-    model = rotate(model, radians(sprite -> rotation), vec3(0.0f, 0.0f, 1.0f));
-    model = translate(model, vec3(sprite -> size.x * (-0.5f), sprite -> size * (-0.5f), 0.0f));
-    model = scale(model, vec3(sprite -> size.x, sprite -> size.y, 1.0f));
+    model = mat4_trans(model, vec3(sprite -> position.x, sprite -> position.y, 0.0f));
+    model = mat4_trans(model, vec3(sprite -> size.x * 0.5f, sprite -> size.y * 0.5f, 0.0f));
+    model = mat4_rot(model, float_rad(sprite -> rotation), vec3(0.0f, 0.0f, 1.0f));
+    model = mat4_trans(model, vec3(sprite -> size.x * (-0.5f), sprite -> size.y * (-0.5f), 0.0f));
+    model = mat4_scale(model, vec3(sprite -> size.x, sprite -> size.y, 1.0f));
 
     shader_set_mat4(&renderer -> shader, "u_Model", model);
     shader_set_vec3(&renderer -> shader, "u_Color", sprite -> color);
@@ -162,9 +191,14 @@ void renderer_draw(renderer_t *renderer, sprite_t *sprite) {
 static struct {
     GLFWwindow *window;
 
-    struct {} player;
+    renderer_t renderer;
 
-    struct {} enemy;
+    struct {
+        sprite_t ground;
+    } world;
+
+    sprite_t player;
+    sprite_t enemy;
 
 } context;
 
@@ -205,8 +239,25 @@ void game_init(void) {
     glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
 
     // SHADER
-    shader_t shader = {0};
-    shader_create(&shader, "shader.vs", "shader.fs");
+    shader_create(&context.renderer.shader, "shader/sprite.vs", "shader/sprite.fs");
+
+    // TEXTURE
+
+    // RENDERER
+    renderer_init(&context.renderer);
+
+    // SPRITE
+    context.player.texture = 0;
+    context.player.position = vec2(WINDOW_WIDTH / 2, WINDOW_HEIGHT / 2);
+    context.player.size = vec2(128.0f, 256.0f);
+    context.player.rotation = 0.0f;
+    context.player.color = vec3(1.0f, 1.0f, 1.0f);
+
+    // VIEW
+    mat4_t projection = mat4_ortho(0.0f, (float) WINDOW_WIDTH, (float) WINDOW_HEIGHT, 0.0f, -1.0f, 1.0f);
+
+    shader_set_mat4(&context.renderer.shader, "u_View", projection);
+    shader_set_int(&context.renderer.shader, "u_Image", 0);
 
 }
 
@@ -216,6 +267,7 @@ void game_update(void) {
         // OPENGL
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
+        renderer_draw(&context.renderer, &context.player);
         //..
 
         // OPENGL
