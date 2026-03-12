@@ -1,7 +1,15 @@
 #ifndef __LIBMATH__
 #define __LIBMATH__
 
+#include <math.h> // temp
+
 #define PI 3.14159265358979323846
+
+#define float_rad(d) (m_float_rad(d))
+
+static inline float m_float_rad(float d) {
+    return d * 0.0174532951994329576923690768489;
+}
 
 // VEC2
 
@@ -67,6 +75,12 @@ static inline float m_vec3_dot(vec3_t a, vec3_t b) {
 
 static inline vec3_t m_vec3_cross(vec3_t a, vec3_t b) {
     return (vec3_t) {a.y * b.z - a.z * b.y, a.z * b.x - a.x * b.z, a.x * b.y - a.y * b.x};
+}
+
+static inline vec3_t m_vec3_norm(vec3_t v) {
+    float l = sqrt((v.x * v.x) + (v.y * v.y) + (v.z * v.z));
+    if (l < 0.00001f) return vec3(0.0f, 0.0f, 0.0f);
+    return vec3(v.x / l, v.y / l, v.z / l);
 }
 
 // VEC4
@@ -146,7 +160,10 @@ static inline mat3_t m_mat3_add(mat3_t a, mat3_t b) {
     {0, 0, 0, v} \
 }})
 #define mat4_add(a, b) (m_mat4_add(a, b))
-#define mat3_ortho(l, r, t, b, zn, zf) (m_mat3_ortho(l, r, t, b, zn, zf))
+#define mat4_ortho(l, r, t, b, n, z) (m_mat4_ortho(l, r, t, b, z, z))
+#define mat4_trans(m, v) (m_mat4_trans(m, v))
+#define mat4_rot(m, d, v) (m_mat4_rot(m, d, v))
+#define mat4_scale(m, v) (m_mat4_scale(m, v))
 
 typedef struct {
     float m[4][4];
@@ -161,15 +178,72 @@ static inline mat4_t m_mat4_add(mat4_t a, mat4_t b) {
     }};
 }
 
-static inline mat4_t m_mat4_ortho(float l, float r, float t, float b, float zn, float zf) {
+static inline mat4_t m_mat4_ortho(float l, float r, float t, float b, float n, float f) {
     mat4_t m = mat4(0.0f);
     m.m[0][0] = 2.0f / (r - l);
     m.m[1][1] = 2.0f / (t - b);
-    m.m[2][2] = -2.0f / (zf / zn);
+    m.m[2][2] = -2.0f / (f / n);
     m.m[3][0] = -(r + l) / (r - l);
     m.m[3][1] = -(t + b) / (t - b);
-    m.m[3][2] = -(zf + zn) / (zf - zn);
+    m.m[3][2] = -(f + n) / (f - n);
     m.m[3][3] = 1.0f;
+    return m;
+}
+
+static inline mat4_t m_mat4_trans(mat4_t m, vec3_t v) {
+    m.m[3][0] += v.x;
+    m.m[3][1] += v.y;
+    m.m[3][2] += v.z;
+    return m;
+}
+
+static inline mat4_t m_mat4_rot(mat4_t m, float d, vec3_t v) {
+    float const a = m_float_rad(d);
+    float const c = cos(a), s = sin(a);
+
+    vec3_t n = m_vec3_norm(v);
+
+    mat4_t t = mat4(0.0f);
+    t.m[0][0] = c + (1 - c) * n.x * n.x;
+    t.m[0][1] = (1 - c) * n.x * n.y - s * n.z;
+    t.m[0][2] = (1 - c) * n.x * n.z + s * n.y;
+
+    t.m[1][0] = (1 - c) * n.y * n.x + s * n.z;
+    t.m[1][1] = c + (1 - c) * n.y * n.y;
+    t.m[1][2] = (1 - c) * n.y * n.z - s * n.x;
+
+    t.m[2][0] = (1 - c) * n.z * n.x - s * n.y;
+    t.m[2][1] = (1 - c) * n.z * n.y + s * n.x;
+    t.m[2][2] = c + (1 - c) * n.z * n.z;
+
+    t.m[3][3] = 1.0f;
+
+    mat4_t r = mat4(0.0f);
+    for (uint32_t i = 0; i < 4; i++) {
+        for (uint32_t j = 0; j < 4; j++) {
+            r.m[i][j] = 0;
+            for (uint32_t k = 0; k < 4; k++) {
+                r.m[i][j] += m.m[i][k] * t.m[k][j];
+            }
+        }
+    }
+
+    return r;
+}
+
+static inline mat4_t m_mat4_scale(mat4_t m, vec3_t v) {
+    m.m[0][0] *= v.x;
+    m.m[0][1] *= v.x;
+    m.m[0][2] *= v.x;
+
+    m.m[1][0] *= v.y;
+    m.m[1][1] *= v.y;
+    m.m[1][2] *= v.y;
+
+    m.m[2][0] *= v.z;
+    m.m[2][1] *= v.z;
+    m.m[2][2] *= v.z;
+
     return m;
 }
 
