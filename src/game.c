@@ -26,7 +26,7 @@ typedef struct shader {
     uint32_t program;
 } shader_t;
 
-void _shader_read(char *content, char *filepath) {
+void _shader_read(char **content, char *filepath) {
     FILE *file = fopen(filepath, "r");
     ASSERT(file != NULL, "FILE_READ_ERROR: %s", filepath);
 
@@ -34,9 +34,9 @@ void _shader_read(char *content, char *filepath) {
     size_t size = ftell(file);
     rewind(file);
 
-    content = (char*) malloc(size + 1);
-    fread(content, 1, size, file);
-    content[size] = '\0';
+    *content = (char*) malloc(size + 1);
+    fread(*content, 1, size, file);
+    (*content)[size] = '\0';
     
     fclose(file);
 }
@@ -62,9 +62,9 @@ void _shader_compile(uint32_t *id, uint32_t type, char *content) {
 }
 
 void shader_create(shader_t *shader, char *vertpath, char *fragpath) {
-    char *vertcont = NULL, *fragcont = NULL;
-    _shader_read(vertcont, vertpath);
-    _shader_read(fragcont, fragpath);
+    char *vertcont, *fragcont;
+    _shader_read(&vertcont, vertpath);
+    _shader_read(&fragcont, fragpath);
 
     _shader_compile(&shader -> ids[0], GL_VERTEX_SHADER, vertcont);
     _shader_compile(&shader -> ids[1], GL_FRAGMENT_SHADER, fragcont);
@@ -244,20 +244,20 @@ void game_init(void) {
     // TEXTURE
 
     // RENDERER
-    renderer_init(&context.renderer);
+    // renderer_init(&context.renderer);
 
     // SPRITE
-    context.player.texture = 0;
-    context.player.position = vec2(WINDOW_WIDTH / 2, WINDOW_HEIGHT / 2);
-    context.player.size = vec2(128.0f, 256.0f);
-    context.player.rotation = 0.0f;
-    context.player.color = vec3(1.0f, 1.0f, 1.0f);
+    // context.player.texture = 0;
+    // context.player.position = vec2(WINDOW_WIDTH / 2, WINDOW_HEIGHT / 2);
+    // context.player.size = vec2(128.0f, 256.0f);
+    // context.player.rotation = 0.0f;
+    // context.player.color = vec3(1.0f, 1.0f, 1.0f);
 
     // VIEW
-    mat4_t projection = mat4_ortho(0.0f, (float) WINDOW_WIDTH, (float) WINDOW_HEIGHT, 0.0f, -1.0f, 1.0f);
+    // mat4_t projection = mat4_ortho(0.0f, (float) WINDOW_WIDTH, (float) WINDOW_HEIGHT, 0.0f, -1.0f, 1.0f);
 
-    shader_set_mat4(&context.renderer.shader, "u_View", projection);
-    shader_set_int(&context.renderer.shader, "u_Image", 0);
+    // shader_set_mat4(&context.renderer.shader, "u_View", projection);
+    // shader_set_int(&context.renderer.shader, "u_Image", 0);
 
 }
 
@@ -267,7 +267,7 @@ void game_update(void) {
         // OPENGL
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
-        renderer_draw(&context.renderer, &context.player);
+        // renderer_draw(&context.renderer, &context.player);
         //..
 
         // OPENGL
@@ -289,4 +289,4 @@ int main(void) {
     game_update();
     game_stop();
     return 0;
-}
+}        
