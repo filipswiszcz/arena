@@ -160,7 +160,7 @@ static inline mat3_t m_mat3_add(mat3_t a, mat3_t b) {
     {0, 0, 0, v} \
 }})
 #define mat4_add(a, b) (m_mat4_add(a, b))
-#define mat4_ortho(l, r, t, b, n, z) (m_mat4_ortho(l, r, t, b, z, z))
+#define mat4_ortho(l, r, t, b, n, f) (m_mat4_ortho(l, r, t, b, n, f))
 #define mat4_trans(m, v) (m_mat4_trans(m, v))
 #define mat4_rot(m, d, v) (m_mat4_rot(m, d, v))
 #define mat4_scale(m, v) (m_mat4_scale(m, v))
@@ -182,7 +182,7 @@ static inline mat4_t m_mat4_ortho(float l, float r, float t, float b, float n, f
     mat4_t m = mat4(0.0f);
     m.m[0][0] = 2.0f / (r - l);
     m.m[1][1] = 2.0f / (t - b);
-    m.m[2][2] = -2.0f / (f / n);
+    m.m[2][2] = -2.0f / (f - n);
     m.m[3][0] = -(r + l) / (r - l);
     m.m[3][1] = -(t + b) / (t - b);
     m.m[3][2] = -(f + n) / (f - n);
