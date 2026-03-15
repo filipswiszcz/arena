@@ -3,6 +3,8 @@
 #include <stdlib.h>
 
 #include <libmath/math.h>
+#define STB_IMAGE_IMPLEMENTATION
+#include <stb/stb_image.h>
 
 #ifdef __APPLE__
     #define GL_SILENCE_DEPRECATION
@@ -13,9 +15,9 @@
     #include <GLFW/glfw3.h>
 #endif
 
-#define WINDOW_WIDTH 800
-#define WINDOW_HEIGHT 600
-#define WINDOW_NAME "BattleArena 2D (Build v0.0.2)"
+#define WINDOW_WIDTH 1280
+#define WINDOW_HEIGHT 960
+#define WINDOW_NAME "BattleArena 2D (Build v0.0.3)"
 
 #define ASSERT(_e, ...) if (!(_e)) {fprintf(stderr, __VA_ARGS__); exit(1);}
 
@@ -48,7 +50,7 @@ void _shader_compile(uint32_t *id, uint32_t type, char *content) {
     glCompileShader(*id);
 
     free(content);
-
+ 
 #ifdef DEBUG
     int32_t params;
     glGetShaderiv(*id, GL_COMPILE_STATUS, &params);
@@ -61,7 +63,7 @@ void _shader_compile(uint32_t *id, uint32_t type, char *content) {
 #endif
 }
 
-void shader_create(shader_t *shader, char *vertpath, char *fragpath) {
+void shader_init(shader_t *shader, char *vertpath, char *fragpath) {
     char *vertcont, *fragcont;
     _shader_read(&vertcont, vertpath);
     _shader_read(&fragcont, fragpath);
@@ -101,39 +103,54 @@ void shader_set_mat4(shader_t *shader, char *name, mat4_t mat) {
 
 typedef struct texture {
     uint32_t id;
-    uint32_t width, height;
-    uint32_t format;
-    uint32_t wraps, wrapt;
-    uint32_t fmin, fmax;
+    int32_t width, height;
+    int32_t format;
 } texture_t;
 
-void texture_init(texture_t *texture, uint32_t width, uint32_t height, unsigned char *data) {
+void texture_init(texture_t *texture, char *filepath) {
     glGenTextures(1, &texture -> id);
-
-    texture -> width = width;
-    texture -> height = height;
-
     glBindTexture(GL_TEXTURE_2D, texture -> id);
-    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, width, height, 0, GL_RGB, GL_UNSIGNED_BYTE, data);
 
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
+
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+    
+    int32_t channels;
+    unsigned char *pixels = stbi_load(filepath, &texture -> width, &texture -> height, &channels, 0);
+    ASSERT(pixels, "TEXTURE_READ_ERROR: %s", filepath);
 
-    glBindTexture(GL_TEXTURE_2D, 0);
+    switch (channels) {
+        case 1: {texture -> format = GL_RED; break;}
+        case 3: {texture -> format = GL_RGB; break;}
+        case 4: {texture -> format = GL_RGBA; break;}
+    }
+
+    glTexImage2D(GL_TEXTURE_2D, 0, texture -> format, texture -> width, texture -> height, 0, texture -> format, GL_UNSIGNED_BYTE, pixels);
+    // ?
+
+    stbi_image_free(pixels);
 }
 
 void texture_bind(texture_t *texture) {
-    glBindTexture(GL_TEXTURE_2D, 0);
+    glBindTexture(GL_TEXTURE_2D, texture -> id);
 }
 
 typedef struct sprite {
-    uint32_t texture;
+    texture_t *texture;
     vec2_t position, size;
     float rotation;
     vec3_t color;
 } sprite_t;
+
+void sprite_init(sprite_t *sprite, texture_t *texture, vec2_t position, vec2_t size, float rotation, vec3_t color) {
+    sprite -> texture = texture;
+    sprite -> position = position;
+    sprite -> size = size;
+    sprite -> rotation = rotation;
+    sprite -> color = color;
+}
 
 typedef struct renderer {
     shader_t shader;
@@ -158,8 +175,10 @@ void renderer_init(renderer_t *renderer) {
     glBindBuffer(GL_ARRAY_BUFFER, renderer -> vbo);
     glBufferData(GL_ARRAY_BUFFER, sizeof(vertices), vertices, GL_STATIC_DRAW);
 
-    glVertexAttribPointer(0, 4, GL_FLOAT, GL_FALSE, sizeof(vec4_t), (void*) 0);
+    glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, sizeof(vec4_t), (void*) 0);
     glEnableVertexAttribArray(0);
+    glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, sizeof(vec4_t), (void*) (2 * sizeof(float)));
+    glEnableVertexAttribArray(1);
 
     glBindBuffer(GL_ARRAY_BUFFER, 0);  
     glBindVertexArray(0);
@@ -171,7 +190,8 @@ void renderer_draw(renderer_t *renderer, sprite_t *sprite) {
     mat4_t model = mat4(1.0f);
     model = mat4_trans(model, vec3(sprite -> position.x, sprite -> position.y, 0.0f));
     model = mat4_trans(model, vec3(sprite -> size.x * 0.5f, sprite -> size.y * 0.5f, 0.0f));
-    model = mat4_rot(model, float_rad(sprite -> rotation), vec3(0.0f, 0.0f, 1.0f));
+    // model = mat4_rot(model, float_rad(sprite -> rotation), vec3(0.0f, 0.0f, 1.0f));
+    model = mat4_rot(model, sprite -> rotation, vec3(0.0f, 0.0f, 1.0f));
     model = mat4_trans(model, vec3(sprite -> size.x * (-0.5f), sprite -> size.y * (-0.5f), 0.0f));
     model = mat4_scale(model, vec3(sprite -> size.x, sprite -> size.y, 1.0f));
 
@@ -179,7 +199,7 @@ void renderer_draw(renderer_t *renderer, sprite_t *sprite) {
     shader_set_vec3(&renderer -> shader, "u_Color", sprite -> color);
 
     glActiveTexture(GL_TEXTURE0);
-    // bind texture from sprit
+    texture_bind(sprite -> texture);
 
     glBindVertexArray(renderer -> vao);
     glDrawArrays(GL_TRIANGLES, 0, 6);
@@ -191,14 +211,18 @@ void renderer_draw(renderer_t *renderer, sprite_t *sprite) {
 static struct {
     GLFWwindow *window;
 
+    // texture_t *textures;
+    texture_t textures[3]; // temp
+
     renderer_t renderer;
 
     struct {
-        sprite_t ground;
-    } world;
+        sprite_t floor;
+    } player;
 
-    sprite_t player;
-    sprite_t enemy;
+    struct {
+        sprite_t floor;
+    } enemy;
 
 } context;
 
@@ -218,6 +242,7 @@ void game_init(void) {
 #ifdef __APPLE__
     glfwWindowHint(GLFW_OPENGL_FORWARD_COMPAT, GL_TRUE);
 #endif
+    glfwWindowHint(GLFW_RESIZABLE, GL_FALSE);
 
     context.window = glfwCreateWindow(WINDOW_WIDTH, WINDOW_HEIGHT, WINDOW_NAME, NULL, NULL);
     ASSERT(context.window, "GLFW_WINDOW_CREATE_ERROR");
@@ -236,28 +261,32 @@ void game_init(void) {
     // glEnable(GL_DEPTH_TEST);
     // glEnable(GL_PROGRAM_POINT_SIZE);
     // glPolygonMode(GL_FRONT_AND_BACK, GL_LINE);
+    glViewport(0, 0, WINDOW_WIDTH, WINDOW_HEIGHT);
+    glEnable(GL_BLEND);
+    glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
     glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
 
     // SHADER
-    shader_create(&context.renderer.shader, "shader/sprite.vs", "shader/sprite.fs");
+    shader_init(&context.renderer.shader, "shader/sprite.vs", "shader/sprite.fs");
 
     // TEXTURE
+    // arena alloc
+    texture_init(&context.textures[0], "assets/texture/floor.jpg");
+    //..
 
     // RENDERER
-    // renderer_init(&context.renderer);
+    renderer_init(&context.renderer);
 
     // SPRITE
-    // context.player.texture = 0;
-    // context.player.position = vec2(WINDOW_WIDTH / 2, WINDOW_HEIGHT / 2);
-    // context.player.size = vec2(128.0f, 256.0f);
-    // context.player.rotation = 0.0f;
-    // context.player.color = vec3(1.0f, 1.0f, 1.0f);
+    sprite_init(&context.player.floor, &context.textures[0], vec2(0.0f, 0.0f), vec2(500.0f, 100.0f), 0.0f, vec3(1.0f, 1.0f, 1.0f));
+    sprite_init(&context.enemy.floor, &context.textures[0], vec2(780.0f, 0.0f), vec2(500.0f, 100.0f), 0.0f, vec3(1.0f, 1.0f, 1.0f));
 
     // VIEW
-    // mat4_t projection = mat4_ortho(0.0f, (float) WINDOW_WIDTH, (float) WINDOW_HEIGHT, 0.0f, -1.0f, 1.0f);
+    mat4_t projection = mat4_ortho(0.0f, (float) WINDOW_WIDTH, (float) WINDOW_HEIGHT, 0.0f, -1.0f, 1.0f);
 
-    // shader_set_mat4(&context.renderer.shader, "u_View", projection);
-    // shader_set_int(&context.renderer.shader, "u_Image", 0);
+    shader_use(&context.renderer.shader);
+    shader_set_mat4(&context.renderer.shader, "u_Projection", projection);
+    shader_set_int(&context.renderer.shader, "u_Texture", 0);
 
 }
 
@@ -267,7 +296,8 @@ void game_update(void) {
         // OPENGL
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
-        // renderer_draw(&context.renderer, &context.player);
+        renderer_draw(&context.renderer, &context.player.floor);
+        renderer_draw(&context.renderer, &context.enemy.floor);
         //..
 
         // OPENGL
@@ -289,4 +319,4 @@ int main(void) {
     game_update();
     game_stop();
     return 0;
-}        
+}
