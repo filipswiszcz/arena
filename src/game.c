@@ -15,8 +15,8 @@
     #include <GLFW/glfw3.h>
 #endif
 
-#define WINDOW_WIDTH 1280
-#define WINDOW_HEIGHT 960
+#define WINDOW_WIDTH 800
+#define WINDOW_HEIGHT 600
 #define WINDOW_NAME "BattleArena 2D (Build v0.0.3)"
 
 #define ASSERT(_e, ...) if (!(_e)) {fprintf(stderr, __VA_ARGS__); exit(1);}
@@ -29,7 +29,7 @@ typedef struct shader {
 } shader_t;
 
 void _shader_read(char **content, char *filepath) {
-    FILE *file = fopen(filepath, "r");
+    FILE *file = fopen(filepath, "rb");
     ASSERT(file != NULL, "FILE_READ_ERROR: %s", filepath);
 
     fseek(file, 0, SEEK_END);
@@ -91,6 +91,10 @@ void shader_set_float(shader_t *shader, char *name, float val) {
     glUniform1f(glGetUniformLocation(shader -> program, name), val);
 }
 
+void shader_set_vec2(shader_t *shader, char *name, vec2_t vec) {
+    glUniform2f(glGetUniformLocation(shader -> program, name), vec.x, vec.y);
+}
+
 void shader_set_vec3(shader_t *shader, char *name, vec3_t vec) {
     glUniform3f(glGetUniformLocation(shader -> program, name), vec.x, vec.y, vec.z);
 }
@@ -116,6 +120,8 @@ void texture_init(texture_t *texture, char *filepath) {
 
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+
+    stbi_set_flip_vertically_on_load(1);
     
     int32_t channels;
     unsigned char *pixels = stbi_load(filepath, &texture -> width, &texture -> height, &channels, 0);
@@ -141,14 +147,17 @@ typedef struct sprite {
     texture_t *texture;
     vec2_t position, size;
     float rotation;
+    vec2_t scale, offset;
     vec3_t color;
 } sprite_t;
 
-void sprite_init(sprite_t *sprite, texture_t *texture, vec2_t position, vec2_t size, float rotation, vec3_t color) {
+void sprite_init(sprite_t *sprite, texture_t *texture, vec2_t position, vec2_t size, float rotation, vec2_t scale, vec2_t offset, vec3_t color) {
     sprite -> texture = texture;
     sprite -> position = position;
     sprite -> size = size;
     sprite -> rotation = rotation;
+    sprite -> scale = scale;
+    sprite -> offset = offset;
     sprite -> color = color;
 }
 
@@ -196,6 +205,8 @@ void renderer_draw(renderer_t *renderer, sprite_t *sprite) {
     model = mat4_scale(model, vec3(sprite -> size.x, sprite -> size.y, 1.0f));
 
     shader_set_mat4(&renderer -> shader, "u_Model", model);
+    shader_set_vec2(&renderer -> shader, "u_Scale", sprite -> scale);
+    shader_set_vec2(&renderer -> shader, "u_Offset", sprite -> offset);
     shader_set_vec3(&renderer -> shader, "u_Color", sprite -> color);
 
     glActiveTexture(GL_TEXTURE0);
@@ -212,16 +223,26 @@ static struct {
     GLFWwindow *window;
 
     // texture_t *textures;
-    texture_t textures[3]; // temp
+    texture_t textures[16]; // temp
 
     renderer_t renderer;
 
     struct {
         sprite_t floor;
+    } level;
+
+    struct {
+        sprite_t body;
+        uint8_t animation;
+
+        sprite_t hand;
+        sprite_t weapon;
+
+        uint8_t grounded;
     } player;
 
     struct {
-        sprite_t floor;
+        sprite_t body;
     } enemy;
 
 } context;
@@ -271,15 +292,30 @@ void game_init(void) {
 
     // TEXTURE
     // arena alloc
-    texture_init(&context.textures[0], "assets/texture/floor.jpg");
+    texture_init(&context.textures[0], "assets/texture/world/floor.jpg");
+    texture_init(&context.textures[1], "assets/texture/player/body/idle_1.png");
+    texture_init(&context.textures[2], "assets/texture/player/body/hand/hand_2.png");
+    texture_init(&context.textures[3], "assets/texture/player/weapon/gun_2.png");
+    texture_init(&context.textures[4], "assets/texture/enemy/idle.png");
     //..
 
     // RENDERER
     renderer_init(&context.renderer);
 
     // SPRITE
-    sprite_init(&context.player.floor, &context.textures[0], vec2(0.0f, 0.0f), vec2(500.0f, 100.0f), 0.0f, vec3(1.0f, 1.0f, 1.0f));
-    sprite_init(&context.enemy.floor, &context.textures[0], vec2(780.0f, 0.0f), vec2(500.0f, 100.0f), 0.0f, vec3(1.0f, 1.0f, 1.0f));
+    // sprite_init(&context.player.floor, &context.textures[0], vec2(0.0f, 0.0f), vec2(500.0f, 100.0f), 0.0f, vec3(1.0f, 1.0f, 1.0f));
+    // sprite_init(&context.enemy.floor, &context.textures[0], vec2(780.0f, 0.0f), vec2(500.0f, 100.0f), 0.0f, vec3(1.0f, 1.0f, 1.0f));
+    sprite_init(&context.level.floor, &context.textures[0], vec2(0.0f, 0.0f), vec2(300.0f, 50.0f), 0.0f, vec2(1.0f, 1.0f), vec2(0.0f, 0.0f), vec3(1.0f, 1.0f, 1.0f));
+    // sprite_init(&context.level.floor, &context.textures[0], vec2(0.0f, 0.0f), vec2(800.0f, 600.0f), 0.0f, vec2(0.3f, 1.0f), vec2(2214.0f, 0.0f), vec3(1.0f, 1.0f, 1.0f));
+
+    sprite_init(&context.player.body, &context.textures[1], vec2(250.0f, 50.0f), vec2(48.0f, 48.0f), 0.0f, vec2(0.25f, 1.0f), vec2(0.0f, 0.0f), vec3(1.0f, 1.0f, 1.0f));
+    sprite_init(&context.player.hand, &context.textures[2], vec2(250.0f, 50.0f), vec2(32.0f, 32.0f), 0.0f, vec2(1.0f, 1.0f), vec2(0.0f, 0.0f), vec3(1.0f, 1.0f, 1.0f));
+    sprite_init(&context.player.weapon, &context.textures[3], vec2(250.0f, 50.0f), vec2(17.0f, 12.0f), 0.0f, vec2(1.0f, 1.0f), vec2(0.0f, 0.0f), vec3(1.0f, 1.0f, 1.0f));
+
+    context.player.animation = 0;
+    context.player.grounded = 1;
+
+    sprite_init(&context.enemy.body, &context.textures[4], vec2(550.0f, 50.0f), vec2(48.0f, 48.0f), 0.0f, vec2(0.25f, 1.0f), vec2(0.0f, 0.0f), vec3(1.0f, 1.0f, 1.0f));
 
     // VIEW
     mat4_t projection = mat4_ortho(0.0f, (float) WINDOW_WIDTH, (float) WINDOW_HEIGHT, 0.0f, -1.0f, 1.0f);
@@ -290,14 +326,64 @@ void game_init(void) {
 
 }
 
+void _game_keyboard_handle(void) {
+    if (glfwGetKey(context.window, GLFW_KEY_W) == GLFW_PRESS) {
+        if (context.player.grounded) {
+            context.player.body.position.y += 64.0f;
+            context.player.hand.position.y += 64.0f;
+            context.player.weapon.position.y += 64.0f;
+            context.player.grounded = 0;
+        }
+    }
+    if (glfwGetKey(context.window, GLFW_KEY_A) == GLFW_PRESS) {
+        if (context.player.body.position.x >= 0.0f) { 
+            context.player.body.position.x -= (2.0f * 0.04f);
+            context.player.hand.position.x -= (2.0f * 0.04f);
+            context.player.weapon.position.x -= (2.0f * 0.04f);
+        }
+    }
+    if (glfwGetKey(context.window, GLFW_KEY_D) == GLFW_PRESS) {
+        if (context.player.body.position.x <= 276.0f) { 
+            context.player.body.position.x += (2.0f * 0.04f);
+            context.player.hand.position.x += (2.0f * 0.04f);
+            context.player.weapon.position.x += (2.0f * 0.04f);
+        }
+    }
+
+    if (glfwGetKey(context.window, GLFW_KEY_ESCAPE) == GLFW_PRESS) {
+        glfwSetWindowShouldClose(context.window, GL_TRUE);
+    }
+}
+
 void game_update(void) {
     while (!glfwWindowShouldClose(context.window)) {
 
-        // OPENGL
+        // OPENGL 
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
-        renderer_draw(&context.renderer, &context.player.floor);
-        renderer_draw(&context.renderer, &context.enemy.floor);
+        // INPUT
+        _game_keyboard_handle();
+        if (!context.player.grounded) {
+            context.player.body.position.y -= (0.04f);
+            context.player.hand.position.y -= (0.04f);
+            context.player.weapon.position.y -= (1.0f);
+            if (context.player.body.position.y <= 50.0f) {
+                context.player.grounded = 1;
+            }
+        }
+
+        // RENDERER
+        context.level.floor.position = vec2_add(context.level.floor.position, vec2(500.0f, 0.0f));
+        renderer_draw(&context.renderer, &context.level.floor);
+        context.level.floor.position = vec2_sub(context.level.floor.position, vec2(500.0f, 0.0f));
+        renderer_draw(&context.renderer, &context.level.floor);
+        // printf("pos={x=%f, y=%f}\n", context.level.floor.position.x, context.level.floor.position.y);
+
+        renderer_draw(&context.renderer, &context.player.body);
+        renderer_draw(&context.renderer, &context.player.hand);
+        renderer_draw(&context.renderer, &context.player.weapon);
+
+        renderer_draw(&context.renderer, &context.enemy.body);
         //..
 
         // OPENGL
