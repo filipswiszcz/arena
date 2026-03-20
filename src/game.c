@@ -46,12 +46,11 @@ void _shader_read(char **content, char *filepath) {
 void _shader_compile(uint32_t *id, uint32_t type, char *content) {
     *id = glCreateShader(type);
 
-    glShaderSource(*id, 1, &content, NULL);
+    glShaderSource(*id, 1, (const char**) &content, NULL);
     glCompileShader(*id);
 
     free(content);
  
-#ifdef DEBUG
     int32_t params;
     glGetShaderiv(*id, GL_COMPILE_STATUS, &params);
     if (params == 0) {
@@ -60,7 +59,6 @@ void _shader_compile(uint32_t *id, uint32_t type, char *content) {
         printf("SHADER_COMPILE_ERROR: %s\n", log);
         return;
     }
-#endif
 }
 
 void shader_init(shader_t *shader, char *vertpath, char *fragpath) {
