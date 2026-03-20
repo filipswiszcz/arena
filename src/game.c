@@ -3,6 +3,8 @@
 #include <stdlib.h>
 
 #include <libmath/math.h>
+#include <libmem/mem.h>
+
 #define STB_IMAGE_IMPLEMENTATION
 #include <stb/stb_image.h>
 
@@ -220,8 +222,11 @@ void renderer_draw(renderer_t *renderer, sprite_t *sprite) {
 static struct {
     GLFWwindow *window;
 
-    // texture_t *textures;
-    texture_t textures[16]; // temp
+    mem_arena_t arena;
+
+    // assets
+    shader_t *shaders;
+    texture_t *textures;
 
     renderer_t renderer;
 
@@ -250,6 +255,9 @@ static struct {
 // memory arena
 // assets
 // ..
+
+#define GAME_MEMORY_CAPACITY (64 * 1024 * 1024) // 64 MB
+uint8_t GAME_MEMORY[GAME_MEMORY_CAPACITY];
 
 void game_init(void) {
     // GLFW
@@ -285,11 +293,15 @@ void game_init(void) {
     glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
     glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
 
+    // MEMORY
+    mem_arena_init(&context.arena, &GAME_MEMORY, GAME_MEMORY_CAPACITY);
+
     // SHADER
+    // mem arena alloc
     shader_init(&context.renderer.shader, "shader/sprite.vs", "shader/sprite.fs");
 
     // TEXTURE
-    // arena alloc
+    context.textures = mem_arena_alloc(&context.arena, 5 * sizeof(texture_t));
     texture_init(&context.textures[0], "assets/texture/world/floor.jpg");
     texture_init(&context.textures[1], "assets/texture/player/body/idle_1.png");
     texture_init(&context.textures[2], "assets/texture/player/body/hand/hand_2.png");
@@ -392,6 +404,11 @@ void game_update(void) {
 }
 
 void game_stop(void) {
+
+    // clear vaos and vbos
+
+    mem_arena_free(&context.arena); // why do i even add it?
+
     glfwDestroyWindow(context.window);
     glfwTerminate();
 }
