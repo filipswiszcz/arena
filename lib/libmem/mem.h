@@ -2,12 +2,15 @@
 #define __LIBMEM__
 
 #include <stddef.h>
+#if defined(__cplusplus)
+    #include <cstddef>
+#endif
 #include <stdint.h>
 #include <stdio.h>
 
 #if defined(__cplusplus)
     #define MEM_ARENA_DEFAULT_ALIGN alignof(std::max_align_t)
-#elif defined(__STDC_VERSION__) && __STDC_VERSION__ >= 201112L
+#elif defined(__STDC_VERSION__) && __STDC_VERSION__ >= 201112L && !defined(_MSC_VER)
     #define MEM_ARENA_DEFAULT_ALIGN _Alignof(max_align_t)
 #else
     #define MEM_ARENA_DEFAULT_ALIGN (2 * sizeof(void*))
