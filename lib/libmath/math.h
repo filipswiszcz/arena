@@ -78,7 +78,7 @@ static inline vec3_t m_vec3_cross(vec3_t a, vec3_t b) {
 }
 
 static inline vec3_t m_vec3_norm(vec3_t v) {
-    float l = sqrt((v.x * v.x) + (v.y * v.y) + (v.z * v.z));
+    float l = (float) sqrt((v.x * v.x) + (v.y * v.y) + (v.z * v.z));
     if (l < 0.00001f) return vec3(0.0f, 0.0f, 0.0f);
     return vec3(v.x / l, v.y / l, v.z / l);
 }
@@ -199,7 +199,7 @@ static inline mat4_t m_mat4_trans(mat4_t m, vec3_t v) {
 
 static inline mat4_t m_mat4_rot(mat4_t m, float d, vec3_t v) {
     float const a = m_float_rad(d);
-    float const c = cos(a), s = sin(a);
+    float const c = (float) cos(a), s = (float) sin(a);
 
     vec3_t n = m_vec3_norm(v);
 
