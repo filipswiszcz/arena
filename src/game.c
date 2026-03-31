@@ -25,7 +25,7 @@
 
 // SHADER
 
-typedef struct shader {
+typedef struct {
     uint32_t ids[2];
     uint32_t program;
 } shader_t;
@@ -103,9 +103,9 @@ void shader_set_mat4(shader_t *shader, char *name, mat4_t mat) {
     glUniformMatrix4fv(glGetUniformLocation(shader -> program, name), 1, GL_FALSE, &mat.m[0][0]);
 }
 
-// RENDERER
+// TEXTURE
 
-typedef struct texture {
+typedef struct {
     uint32_t id;
     int32_t width, height;
     int32_t format;
@@ -143,30 +143,37 @@ void texture_bind(texture_t *texture) {
     glBindTexture(GL_TEXTURE_2D, texture -> id);
 }
 
-typedef struct sprite {
+// SPRITE
+
+typedef struct {
     texture_t *texture;
     vec2_t position, size;
     float rotation;
-    vec2_t scale, offset;
+    vec2_t scale, offset; // it has to be rethinked
     vec3_t color;
 } sprite_t;
 
 void sprite_init(sprite_t *sprite, texture_t *texture, vec2_t position, vec2_t size, float rotation, vec2_t scale, vec2_t offset, vec3_t color) {
-    sprite -> texture = texture;
-    sprite -> position = position;
-    sprite -> size = size;
-    sprite -> rotation = rotation;
-    sprite -> scale = scale;
-    sprite -> offset = offset;
-    sprite -> color = color;
+    sprite->texture = texture;
+    sprite->position = position;
+    sprite->size = size;
+    sprite->rotation = rotation;
+    sprite->scale = scale;
+    sprite->offset = offset;
+    sprite->color = color;
 }
 
+// RENDERER
+
 typedef struct renderer {
-    shader_t shader;
+    // a queue of things to render?
+    shader_t *shader;
     uint32_t vao, vbo;
 } renderer_t;
 
-void renderer_init(renderer_t *renderer) {
+void renderer_init(renderer_t *renderer, shader_t *shader) {
+    renderer->shader = shader;
+
     vec4_t vertices[] = {
         vec4(0.0f, 1.0f, 0.0f, 1.0f),
         vec4(1.0f, 0.0f, 1.0f, 0.0f),
@@ -176,12 +183,12 @@ void renderer_init(renderer_t *renderer) {
         vec4(1.0f, 0.0f, 1.0f, 0.0f)
     };
     
-    glGenVertexArrays(1, &renderer -> vao);
-    glGenBuffers(1, &renderer -> vbo);
+    glGenVertexArrays(1, &renderer->vao);
+    glGenBuffers(1, &renderer->vbo);
 
-    glBindVertexArray(renderer -> vao);
+    glBindVertexArray(renderer->vao);
     
-    glBindBuffer(GL_ARRAY_BUFFER, renderer -> vbo);
+    glBindBuffer(GL_ARRAY_BUFFER, renderer->vbo);
     glBufferData(GL_ARRAY_BUFFER, sizeof(vertices), vertices, GL_STATIC_DRAW);
 
     glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, sizeof(vec4_t), (void*) 0);
@@ -189,38 +196,116 @@ void renderer_init(renderer_t *renderer) {
     glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, sizeof(vec4_t), (void*) (2 * sizeof(float)));
     glEnableVertexAttribArray(1);
 
-    glBindBuffer(GL_ARRAY_BUFFER, 0);  
+    glBindBuffer(GL_ARRAY_BUFFER, 0);
     glBindVertexArray(0);
 }
 
 void renderer_draw(renderer_t *renderer, sprite_t *sprite) {
-    shader_use(&renderer -> shader);
+    shader_use(renderer->shader);
 
     mat4_t model = mat4(1.0f);
-    model = mat4_trans(model, vec3(sprite -> position.x, sprite -> position.y, 0.0f));
-    model = mat4_trans(model, vec3(sprite -> size.x * 0.5f, sprite -> size.y * 0.5f, 0.0f));
+    model = mat4_trans(model, vec3(sprite->position.x, sprite->position.y, 0.0f));
+    model = mat4_trans(model, vec3(sprite->size.x * 0.5f, sprite->size.y * 0.5f, 0.0f));
     // model = mat4_rot(model, float_rad(sprite -> rotation), vec3(0.0f, 0.0f, 1.0f));
-    model = mat4_rot(model, sprite -> rotation, vec3(0.0f, 0.0f, 1.0f));
-    model = mat4_trans(model, vec3(sprite -> size.x * (-0.5f), sprite -> size.y * (-0.5f), 0.0f));
-    model = mat4_scale(model, vec3(sprite -> size.x, sprite -> size.y, 1.0f));
+    model = mat4_rot(model, sprite->rotation, vec3(0.0f, 0.0f, 1.0f));
+    model = mat4_trans(model, vec3(sprite->size.x * (-0.5f), sprite->size.y * (-0.5f), 0.0f));
+    model = mat4_scale(model, vec3(sprite->size.x, sprite->size.y, 1.0f));
 
-    shader_set_mat4(&renderer -> shader, "u_Model", model);
-    shader_set_vec2(&renderer -> shader, "u_Scale", sprite -> scale);
-    shader_set_vec2(&renderer -> shader, "u_Offset", sprite -> offset);
-    shader_set_vec3(&renderer -> shader, "u_Color", sprite -> color);
+    shader_set_mat4(renderer->shader, "u_Model", model);
+    shader_set_vec2(renderer->shader, "u_Scale", sprite->scale);
+    shader_set_vec2(renderer->shader, "u_Offset", sprite->offset);
+    shader_set_vec3(renderer->shader, "u_Color", sprite->color);
 
     glActiveTexture(GL_TEXTURE0);
-    texture_bind(sprite -> texture);
+    texture_bind(sprite->texture);
 
-    glBindVertexArray(renderer -> vao);
+    glBindVertexArray(renderer->vao);
     glDrawArrays(GL_TRIANGLES, 0, 6);
     glBindVertexArray(0);
 }
 
 // GAME
 
+typedef enum {
+    CHARACTER_ACTION_IDLE = 0,
+    CHARACTER_ACTION_JUMP = 1,
+    CHARACTER_ACTION_RUN = 2,
+    CHARACTER_ACTION_CROUCH = 3,
+    CHARACTER_ACTION_WALK  = 4
+} character_action_t;
+
+typedef struct {
+    vec2_t position, size;
+    float rotation;
+    vec2_t clip, offset;
+} character_state_t;
+
+typedef struct {
+    // sprites as array? and action == index (with pos relative to character's pose?), pos
+    sprite_t *sprites;
+    // enum (or uint8_t) for current action (idle, jump, run, crouch, walk)
+    character_action_t action;
+    character_state_t current_state;
+    vec2_t position;
+    // when 1, then hand is going vert and gun also
+    uint8_t fire; // it manages hand and gun 
+    uint8_t mirror;
+} character_t;
+
+typedef struct {
+    // owner?
+    // sprite
+    // current animation
+    uint8_t mirror;
+} bullet_t;
+
+typedef struct {
+    // sprites
+    // array/queue with bullets (bullet updates pos until hits smth or flies outside of the arena)
+    uint16_t turn;
+} level_t;
+
+// what i need:
+// - a list with all textures (mem arena)
+//      - do i run through assets/ and load them all?
+//      - how do i mark them? with a name? eg "punk_weapon_rest", "punk_weapon_point"
+//      - path "assets/texture/character/punk_idle.png"
+// - a level struct
+//      - animated background
+//      - floor (rigid body) + void
+//      - animated finish texts (like in mortal combat)
+//      - list of all projectiles>
+//          - level checks if character is hit by any bullet from enemy character?
+// - a character struct
+//      - animated body (with hands and weapon)
+//      - collision and movement physics?
+//      - all ML data
+
+// renderer:
+// - an array with static sprites, that are drawn each update
+// - a queue with dynamic sprites, that are drawn and removed
+
 static struct {
     GLFWwindow *window;
+
+    int32_t keys[512];
+
+    // struct {
+    //     double time_of_last_frame;
+    //     double time_between_frames;
+    //     double time_accumulated;
+    //     uint32_t count;
+    // } fps;
+
+    struct {
+        double time_of_last_frame;
+        double time_between_frames;
+        double accumulator;
+    } clock;
+
+    struct {
+        double time;
+    } animation;
 
     mem_arena_t arena;
 
@@ -234,30 +319,63 @@ static struct {
         sprite_t floor;
     } level;
 
-    struct {
-        sprite_t body;
-        uint8_t animation;
+    sprite_t temp;
+    uint8_t ttemp;
 
-        sprite_t hand;
-        sprite_t weapon;
+    character_t player;
+    character_t enemy;
 
-        uint8_t grounded;
-    } player;
+} context; // rename to game
 
-    struct {
-        sprite_t body;
-    } enemy;
-
-} context;
-
-// TODO
-// game icon
-// memory arena
-// assets
-// ..
+#define GAME_SIMULATION_FIXED_TIMESTEP 1.0f / 60.0f
+#define GAME_ANIMATION_FIXED_TIMESTEP 1.0f / 6.0f
 
 #define GAME_MEMORY_CAPACITY (64 * 1024 * 1024) // 64 MB
 uint8_t GAME_MEMORY[GAME_MEMORY_CAPACITY];
+
+void _game_keyboard_callback(GLFWwindow *window, int32_t key, int32_t scan, int32_t action, int32_t mode) {
+    // if (key == GLFW_KEY_ESCAPE && action == GLFW_PRESS) {
+    //     glfwSetWindowShouldClose(window, 1);
+    // }
+    if (key > -1 && key < 512) {
+        if (action == GLFW_PRESS) {
+            context.keys[key] = 1;
+        } else if (action == GLFW_RELEASE) {
+            context.keys[key] = 0;
+        }
+    }
+}
+
+void _game_keyboard_handle(void) {
+    // check game state
+    if (context.keys[GLFW_KEY_W]) {}
+    if (context.keys[GLFW_KEY_S]) {}
+    if (context.keys[GLFW_KEY_A]) {
+        if (context.temp.position.x > 0) context.temp.position.x -= 4.0f;
+    }
+    if (context.keys[GLFW_KEY_D]) {
+        if (context.temp.position.x < 300) context.temp.position.x += 4.0f;
+    }
+}
+
+// void Game::ProcessInput(float dt)
+// {
+//     if (this->State == GAME_ACTIVE)
+//     {
+//         float velocity = PLAYER_VELOCITY * dt;
+//         // move playerboard
+//         if (this->Keys[GLFW_KEY_A])
+//         {
+//             if (Player->Position.x >= 0.0f)
+//                 Player->Position.x -= velocity;
+//         }
+//         if (this->Keys[GLFW_KEY_D])
+//         {
+//             if (Player->Position.x <= this->Width - Player->Size.x)
+//                 Player->Position.x += velocity;
+//         }
+//     }
+// }
 
 void game_init(void) {
     // GLFW
@@ -275,6 +393,7 @@ void game_init(void) {
     ASSERT(context.window, "GLFW_WINDOW_CREATE_ERROR");
 
     glfwMakeContextCurrent(context.window);
+    glfwSetKeyCallback(context.window, _game_keyboard_callback);
     // glfwSetInputMode(context.window, GLFW_CURSOR, GLFW_CURSOR_DISABLED);
 
     // GLEW
@@ -285,102 +404,118 @@ void game_init(void) {
 #endif
 
     // OPENGL
-    // glEnable(GL_DEPTH_TEST);
-    // glEnable(GL_PROGRAM_POINT_SIZE);
     // glPolygonMode(GL_FRONT_AND_BACK, GL_LINE);
     glViewport(0, 0, WINDOW_WIDTH, WINDOW_HEIGHT);
     glEnable(GL_BLEND);
     glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
     glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
 
+    // ICON
+    //..
+
+    // FRAMES
+    context.clock.accumulator = 0.0;
+    context.animation.time = 0.0;
+
     // MEMORY
     mem_arena_init(&context.arena, &GAME_MEMORY, GAME_MEMORY_CAPACITY);
 
     // SHADER
-    // mem arena alloc
-    shader_init(&context.renderer.shader, "shader/sprite.vs", "shader/sprite.fs");
+    context.shaders = mem_arena_alloc(&context.arena, 2 * sizeof(shader_t));
+    shader_init(&context.shaders[0], "shader/sprite.vs", "shader/sprite.fs");
+    // crt shader?
 
     // TEXTURE
-    context.textures = mem_arena_alloc(&context.arena, 5 * sizeof(texture_t));
-    texture_init(&context.textures[0], "assets/texture/world/floor.jpg");
-    texture_init(&context.textures[1], "assets/texture/player/body/idle_1.png");
-    texture_init(&context.textures[2], "assets/texture/player/body/hand/hand_2.png");
-    texture_init(&context.textures[3], "assets/texture/player/weapon/gun_2.png");
-    texture_init(&context.textures[4], "assets/texture/enemy/idle.png");
+    context.textures = mem_arena_alloc(&context.arena, 10 * sizeof(texture_t));
+    texture_init(&context.textures[0], "assets/texture/level/floor.jpg");
+    texture_init(&context.textures[1], "assets/texture/player/body/idle.png");
+    texture_init(&context.textures[2], "assets/texture/player/body/jump.png");
+    texture_init(&context.textures[3], "assets/texture/player/body/run.png");
+    texture_init(&context.textures[4], "assets/texture/player/body/crouch.png");
+    texture_init(&context.textures[5], "assets/texture/player/body/walk.png");
+    texture_init(&context.textures[6], "assets/texture/player/body/hand/hand_idle.png");
+    texture_init(&context.textures[7], "assets/texture/player/body/hand/hand_fire.png");
+    texture_init(&context.textures[8], "assets/texture/player/weapon/gun_idle.png");
+    texture_init(&context.textures[9], "assets/texture/player/weapon/gun_fire.png");
     //..
 
     // RENDERER
-    renderer_init(&context.renderer);
+    renderer_init(&context.renderer, &context.shaders[0]);
 
-    // SPRITE
+    // LEVEL
     // sprite_init(&context.player.floor, &context.textures[0], vec2(0.0f, 0.0f), vec2(500.0f, 100.0f), 0.0f, vec3(1.0f, 1.0f, 1.0f));
     // sprite_init(&context.enemy.floor, &context.textures[0], vec2(780.0f, 0.0f), vec2(500.0f, 100.0f), 0.0f, vec3(1.0f, 1.0f, 1.0f));
     sprite_init(&context.level.floor, &context.textures[0], vec2(0.0f, 0.0f), vec2(300.0f, 50.0f), 0.0f, vec2(1.0f, 1.0f), vec2(0.0f, 0.0f), vec3(1.0f, 1.0f, 1.0f));
-    // sprite_init(&context.level.floor, &context.textures[0], vec2(0.0f, 0.0f), vec2(800.0f, 600.0f), 0.0f, vec2(0.3f, 1.0f), vec2(2214.0f, 0.0f), vec3(1.0f, 1.0f, 1.0f));
-
-    sprite_init(&context.player.body, &context.textures[1], vec2(250.0f, 50.0f), vec2(48.0f, 48.0f), 0.0f, vec2(0.25f, 1.0f), vec2(0.0f, 0.0f), vec3(1.0f, 1.0f, 1.0f));
-    sprite_init(&context.player.hand, &context.textures[2], vec2(250.0f, 50.0f), vec2(32.0f, 32.0f), 0.0f, vec2(1.0f, 1.0f), vec2(0.0f, 0.0f), vec3(1.0f, 1.0f, 1.0f));
-    sprite_init(&context.player.weapon, &context.textures[3], vec2(250.0f, 50.0f), vec2(17.0f, 12.0f), 0.0f, vec2(1.0f, 1.0f), vec2(0.0f, 0.0f), vec3(1.0f, 1.0f, 1.0f));
-
-    context.player.animation = 0;
-    context.player.grounded = 1;
-
-    sprite_init(&context.enemy.body, &context.textures[4], vec2(550.0f, 50.0f), vec2(48.0f, 48.0f), 0.0f, vec2(0.25f, 1.0f), vec2(0.0f, 0.0f), vec3(1.0f, 1.0f, 1.0f));
+    sprite_init(&context.temp, &context.textures[1], vec2(150.0f, 50.0f), vec2(192.0f, 192.0f), 0.0f, vec2(0.25f, 1.0f), vec2(0.25f, 0.0f), vec3(1.0f, 1.0f, 1.0f));
+    context.ttemp = 0;
 
     // VIEW
     mat4_t projection = mat4_ortho(0.0f, (float) WINDOW_WIDTH, (float) WINDOW_HEIGHT, 0.0f, -1.0f, 1.0f);
 
-    shader_use(&context.renderer.shader);
-    shader_set_mat4(&context.renderer.shader, "u_Projection", projection);
-    shader_set_int(&context.renderer.shader, "u_Texture", 0);
+    shader_use(context.renderer.shader);
+    shader_set_mat4(context.renderer.shader, "u_Projection", projection);
+    shader_set_int(context.renderer.shader, "u_Texture", 0);
 
 }
 
-void _game_keyboard_handle(void) {
-    if (glfwGetKey(context.window, GLFW_KEY_W) == GLFW_PRESS) {
-        if (context.player.grounded) {
-            context.player.body.position.y += 64.0f;
-            context.player.hand.position.y += 64.0f;
-            context.player.weapon.position.y += 64.0f;
-            context.player.grounded = 0;
-        }
-    }
-    if (glfwGetKey(context.window, GLFW_KEY_A) == GLFW_PRESS) {
-        if (context.player.body.position.x >= 0.0f) { 
-            context.player.body.position.x -= (2.0f * 0.04f);
-            context.player.hand.position.x -= (2.0f * 0.04f);
-            context.player.weapon.position.x -= (2.0f * 0.04f);
-        }
-    }
-    if (glfwGetKey(context.window, GLFW_KEY_D) == GLFW_PRESS) {
-        if (context.player.body.position.x <= 276.0f) { 
-            context.player.body.position.x += (2.0f * 0.04f);
-            context.player.hand.position.x += (2.0f * 0.04f);
-            context.player.weapon.position.x += (2.0f * 0.04f);
-        }
-    }
-
-    if (glfwGetKey(context.window, GLFW_KEY_ESCAPE) == GLFW_PRESS) {
-        glfwSetWindowShouldClose(context.window, GL_TRUE);
-    }
-}
+// void _game_fps_record(void) {
+//     double curr_time = glfwGetTime();
+//     context.fps.time_between_frames = (float) (curr_time - context.fps.time_of_last_frame);
+//     context.fps.time_of_last_frame = curr_time;
+//     context.fps.time_accumulated += context.fps.time_between_frames;
+//     context.fps.count++;
+//     if (context.fps.time_accumulated >= 1.0f) {
+//         char title[64];
+//         sprintf(title, "%s [%d FPS]", WINDOW_NAME, context.fps.count);
+//         glfwSetWindowTitle(context.window, title);
+//         context.fps.time_accumulated = 0.0f;
+//         context.fps.count = 0;
+//     }
+// }
 
 void game_update(void) {
+    context.clock.time_of_last_frame = glfwGetTime();
     while (!glfwWindowShouldClose(context.window)) {
 
         // OPENGL 
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
-        // INPUT
-        _game_keyboard_handle();
-        if (!context.player.grounded) {
-            context.player.body.position.y -= (0.04f);
-            context.player.hand.position.y -= (0.04f);
-            context.player.weapon.position.y -= (1.0f);
-            if (context.player.body.position.y <= 50.0f) {
-                context.player.grounded = 1;
-            }
+        // FPS
+        // _game_fps_record();
+
+        // SIMULATION
+        double current_time = glfwGetTime();
+        context.clock.time_between_frames = current_time - context.clock.time_of_last_frame;
+        context.clock.time_of_last_frame = current_time;
+
+        if (context.clock.time_between_frames > 0.25) {
+            context.clock.time_between_frames = 0.25;
         }
+
+        context.clock.accumulator += context.clock.time_between_frames;
+
+        while (context.clock.accumulator >= GAME_SIMULATION_FIXED_TIMESTEP) {
+            // save prev character states
+
+            // update game logic
+            _game_keyboard_handle();
+
+            // ANIMATION
+            context.animation.time += GAME_SIMULATION_FIXED_TIMESTEP;
+
+            if (context.animation.time >= GAME_ANIMATION_FIXED_TIMESTEP) {
+                context.animation.time -= GAME_ANIMATION_FIXED_TIMESTEP;
+
+                context.temp.offset.x = (context.temp.scale.x * context.ttemp);
+                if (context.ttemp < 3) context.ttemp++;
+                else context.ttemp = 0;
+            }
+
+            // context.clock.time_simulation += GAME_FIXED_TIMESTEP;
+            context.clock.accumulator -= GAME_SIMULATION_FIXED_TIMESTEP;
+        }
+
+        // double alpha = context.clock.accumulator / GAME_SIMULATION_FIXED_TIMESTEP;
 
         // RENDERER
         context.level.floor.position = vec2_add(context.level.floor.position, vec2(500.0f, 0.0f));
@@ -389,12 +524,7 @@ void game_update(void) {
         renderer_draw(&context.renderer, &context.level.floor);
         // printf("pos={x=%f, y=%f}\n", context.level.floor.position.x, context.level.floor.position.y);
 
-        renderer_draw(&context.renderer, &context.player.body);
-        renderer_draw(&context.renderer, &context.player.hand);
-        renderer_draw(&context.renderer, &context.player.weapon);
-
-        renderer_draw(&context.renderer, &context.enemy.body);
-        //..
+        renderer_draw(&context.renderer, &context.temp);
 
         // OPENGL
         glfwSwapBuffers(context.window);
