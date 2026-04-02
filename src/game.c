@@ -149,7 +149,7 @@ typedef struct {
     texture_t *texture;
     vec2_t position, size;
     float rotation;
-    vec2_t scale, offset; // it has to be rethinked
+    vec2_t scale, offset;
     vec3_t color;
 } sprite_t;
 
@@ -200,29 +200,54 @@ void renderer_init(renderer_t *renderer, shader_t *shader) {
     glBindVertexArray(0);
 }
 
-void renderer_draw(renderer_t *renderer, sprite_t *sprite) {
+void renderer_draw(renderer_t *renderer, texture_t *texture, vec2_t position, vec2_t size, vec2_t scale, vec2_t offset) {
     shader_use(renderer->shader);
 
     mat4_t model = mat4(1.0f);
-    model = mat4_trans(model, vec3(sprite->position.x, sprite->position.y, 0.0f));
-    model = mat4_trans(model, vec3(sprite->size.x * 0.5f, sprite->size.y * 0.5f, 0.0f));
+    model = mat4_trans(model, vec3(position.x, position.y, 0.0f));
+    model = mat4_trans(model, vec3(size.x * 0.5f, size.y * 0.5f, 0.0f));
     // model = mat4_rot(model, float_rad(sprite -> rotation), vec3(0.0f, 0.0f, 1.0f));
-    model = mat4_rot(model, sprite->rotation, vec3(0.0f, 0.0f, 1.0f));
-    model = mat4_trans(model, vec3(sprite->size.x * (-0.5f), sprite->size.y * (-0.5f), 0.0f));
-    model = mat4_scale(model, vec3(sprite->size.x, sprite->size.y, 1.0f));
+    // model = mat4_rot(model, rotation, vec3(0.0f, 0.0f, 1.0f));
+    model = mat4_trans(model, vec3(size.x * (-0.5f), size.y * (-0.5f), 0.0f));
+    model = mat4_scale(model, vec3(size.x, size.y, 1.0f));
 
     shader_set_mat4(renderer->shader, "u_Model", model);
-    shader_set_vec2(renderer->shader, "u_Scale", sprite->scale);
-    shader_set_vec2(renderer->shader, "u_Offset", sprite->offset);
-    shader_set_vec3(renderer->shader, "u_Color", sprite->color);
+    shader_set_vec2(renderer->shader, "u_Scale", scale);
+    shader_set_vec2(renderer->shader, "u_Offset", offset);
+    shader_set_vec3(renderer->shader, "u_Color", vec3(1.0f, 1.0f, 1.0f));
+    // shader_set_vec3(renderer->shader, "u_Color", sprite->color);
 
     glActiveTexture(GL_TEXTURE0);
-    texture_bind(sprite->texture);
+    texture_bind(texture);
 
     glBindVertexArray(renderer->vao);
     glDrawArrays(GL_TRIANGLES, 0, 6);
     glBindVertexArray(0);
 }
+
+// void renderer_draw(renderer_t *renderer, sprite_t *sprite) {
+//     shader_use(renderer->shader);
+
+//     mat4_t model = mat4(1.0f);
+//     model = mat4_trans(model, vec3(sprite->position.x, sprite->position.y, 0.0f));
+//     model = mat4_trans(model, vec3(sprite->size.x * 0.5f, sprite->size.y * 0.5f, 0.0f));
+//     // model = mat4_rot(model, float_rad(sprite -> rotation), vec3(0.0f, 0.0f, 1.0f));
+//     model = mat4_rot(model, sprite->rotation, vec3(0.0f, 0.0f, 1.0f));
+//     model = mat4_trans(model, vec3(sprite->size.x * (-0.5f), sprite->size.y * (-0.5f), 0.0f));
+//     model = mat4_scale(model, vec3(sprite->size.x, sprite->size.y, 1.0f));
+
+//     shader_set_mat4(renderer->shader, "u_Model", model);
+//     shader_set_vec2(renderer->shader, "u_Scale", sprite->scale);
+//     shader_set_vec2(renderer->shader, "u_Offset", sprite->offset);
+//     shader_set_vec3(renderer->shader, "u_Color", sprite->color);
+
+//     glActiveTexture(GL_TEXTURE0);
+//     texture_bind(sprite->texture);
+
+//     glBindVertexArray(renderer->vao);
+//     glDrawArrays(GL_TRIANGLES, 0, 6);
+//     glBindVertexArray(0);
+// }
 
 // GAME
 
@@ -230,8 +255,7 @@ typedef enum {
     CHARACTER_ACTION_IDLE = 0,
     CHARACTER_ACTION_JUMP = 1,
     CHARACTER_ACTION_RUN = 2,
-    CHARACTER_ACTION_CROUCH = 3,
-    CHARACTER_ACTION_WALK  = 4
+    CHARACTER_ACTION_CROUCH = 3
 } character_action_t;
 
 typedef struct {
@@ -241,16 +265,23 @@ typedef struct {
 } character_state_t;
 
 typedef struct {
+    vec2_t position;
     // sprites as array? and action == index (with pos relative to character's pose?), pos
     sprite_t *sprites;
-    // enum (or uint8_t) for current action (idle, jump, run, crouch, walk)
+    // enum (or uint8_t) for current action (idle, jump, run, crouch)
     character_action_t action;
-    character_state_t current_state;
-    vec2_t position;
-    // when 1, then hand is going vert and gun also
-    uint8_t fire; // it manages hand and gun 
+    // character_state_t cstate, pstate;
     uint8_t mirror;
+    uint8_t fire; // it manages hand and gun | when 1, then hand and gun are going vert (animation)
 } character_t;
+
+void character_init(character_t *character, vec2_t position, sprite_t *sprites, uint8_t mirror) {
+    character->position = position;
+    character->sprites = sprites;
+    character->action = CHARACTER_ACTION_IDLE;
+    character->mirror = mirror;
+    character->fire = 0;
+}
 
 typedef struct {
     // owner?
@@ -334,9 +365,6 @@ static struct {
 uint8_t GAME_MEMORY[GAME_MEMORY_CAPACITY];
 
 void _game_keyboard_callback(GLFWwindow *window, int32_t key, int32_t scan, int32_t action, int32_t mode) {
-    // if (key == GLFW_KEY_ESCAPE && action == GLFW_PRESS) {
-    //     glfwSetWindowShouldClose(window, 1);
-    // }
     if (key > -1 && key < 512) {
         if (action == GLFW_PRESS) {
             context.keys[key] = 1;
@@ -347,37 +375,25 @@ void _game_keyboard_callback(GLFWwindow *window, int32_t key, int32_t scan, int3
 }
 
 void _game_keyboard_handle(void) {
-    // check game state
+    // if (context.state = PAUSE) {// check for resume key; return;}
+    if (context.keys[GLFW_KEY_ESCAPE]) {
+        glfwSetWindowShouldClose(context.window, 1);
+    }
     if (context.keys[GLFW_KEY_W]) {}
     if (context.keys[GLFW_KEY_S]) {}
     if (context.keys[GLFW_KEY_A]) {
-        if (context.temp.position.x > 0) context.temp.position.x -= 4.0f;
+        if (context.temp.position.x > 0) {
+            context.temp.position.x -= 4.0f;
+            // animation
+        }
     }
     if (context.keys[GLFW_KEY_D]) {
-        if (context.temp.position.x < 300) context.temp.position.x += 4.0f;
+        if (context.temp.position.x < 252) context.temp.position.x += 4.0f;
     }
 }
 
-// void Game::ProcessInput(float dt)
-// {
-//     if (this->State == GAME_ACTIVE)
-//     {
-//         float velocity = PLAYER_VELOCITY * dt;
-//         // move playerboard
-//         if (this->Keys[GLFW_KEY_A])
-//         {
-//             if (Player->Position.x >= 0.0f)
-//                 Player->Position.x -= velocity;
-//         }
-//         if (this->Keys[GLFW_KEY_D])
-//         {
-//             if (Player->Position.x <= this->Width - Player->Size.x)
-//                 Player->Position.x += velocity;
-//         }
-//     }
-// }
-
 void game_init(void) {
+
     // GLFW
     ASSERT(glfwInit(), "OPENGL_INIT_ERROR");
 
@@ -426,28 +442,41 @@ void game_init(void) {
     // crt shader?
 
     // TEXTURE
-    context.textures = mem_arena_alloc(&context.arena, 10 * sizeof(texture_t));
+    context.textures = mem_arena_alloc(&context.arena, 9 * sizeof(texture_t));
     texture_init(&context.textures[0], "assets/texture/level/floor.jpg");
     texture_init(&context.textures[1], "assets/texture/player/body/idle.png");
     texture_init(&context.textures[2], "assets/texture/player/body/jump.png");
     texture_init(&context.textures[3], "assets/texture/player/body/run.png");
     texture_init(&context.textures[4], "assets/texture/player/body/crouch.png");
-    texture_init(&context.textures[5], "assets/texture/player/body/walk.png");
-    texture_init(&context.textures[6], "assets/texture/player/body/hand/hand_idle.png");
-    texture_init(&context.textures[7], "assets/texture/player/body/hand/hand_fire.png");
-    texture_init(&context.textures[8], "assets/texture/player/weapon/gun_idle.png");
-    texture_init(&context.textures[9], "assets/texture/player/weapon/gun_fire.png");
+    texture_init(&context.textures[5], "assets/texture/player/body/hand/hand_idle.png");
+    texture_init(&context.textures[6], "assets/texture/player/body/hand/hand_fire.png");
+    texture_init(&context.textures[7], "assets/texture/player/weapon/gun_idle.png");
+    texture_init(&context.textures[8], "assets/texture/player/weapon/gun_fire.png");
     //..
 
     // RENDERER
     renderer_init(&context.renderer, &context.shaders[0]);
 
+    // SPRITES
+    context.player.position = vec2(150.0f, 50.0f);
+    context.player.sprites = mem_arena_alloc(&context.arena, 8 * sizeof(sprite_t));
+    context.player.action = CHARACTER_ACTION_IDLE;
+    context.player.mirror = 0;
+    context.player.fire = 0;
+
+    sprite_init(&context.player.sprites[0], &context.textures[1], vec2(0.0f, 0.0f), vec2(192.0f, 192.0f), 0.0f, vec2(0.25f, 1.0f), vec2(0.25f, 0.0f), vec3(1.0f, 1.0f, 1.0f)); // idle
+    sprite_init(&context.player.sprites[1], &context.textures[2], vec2(0.0f, 0.0f), vec2(192.0f, 192.0f), 0.0f, vec2(0.25f, 1.0f), vec2(0.25f, 0.0f), vec3(1.0f, 1.0f, 1.0f)); // jump
+    sprite_init(&context.player.sprites[2], &context.textures[3], vec2(0.0f, 0.0f), vec2(192.0f, 192.0f), 0.0f, vec2(0.167f, 1.0f), vec2(0.167f, 0.0f), vec3(1.0f, 1.0f, 1.0f)); // run
+    sprite_init(&context.player.sprites[3], &context.textures[4], vec2(0.0f, 0.0f), vec2(192.0f, 192.0f), 0.0f, vec2(0.25f, 1.0f), vec2(0.25f, 0.0f), vec3(1.0f, 1.0f, 1.0f)); // crouch
+    sprite_init(&context.player.sprites[4], &context.textures[5], vec2(0.0f, 0.0f), vec2(128.0f, 128.0f), 0.0f, vec2(1.0f, 1.0f), vec2(0.0f, 0.0f), vec3(1.0f, 1.0f, 1.0f)); // hand idle
+    sprite_init(&context.player.sprites[5], &context.textures[6], vec2(0.0f, 0.0f), vec2(128.0f, 128.0f), 0.0f, vec2(1.0f, 1.0f), vec2(0.0f, 0.0f), vec3(1.0f, 1.0f, 1.0f)); // hand fire
+
     // LEVEL
     // sprite_init(&context.player.floor, &context.textures[0], vec2(0.0f, 0.0f), vec2(500.0f, 100.0f), 0.0f, vec3(1.0f, 1.0f, 1.0f));
     // sprite_init(&context.enemy.floor, &context.textures[0], vec2(780.0f, 0.0f), vec2(500.0f, 100.0f), 0.0f, vec3(1.0f, 1.0f, 1.0f));
     sprite_init(&context.level.floor, &context.textures[0], vec2(0.0f, 0.0f), vec2(300.0f, 50.0f), 0.0f, vec2(1.0f, 1.0f), vec2(0.0f, 0.0f), vec3(1.0f, 1.0f, 1.0f));
-    sprite_init(&context.temp, &context.textures[1], vec2(150.0f, 50.0f), vec2(192.0f, 192.0f), 0.0f, vec2(0.25f, 1.0f), vec2(0.25f, 0.0f), vec3(1.0f, 1.0f, 1.0f));
-    context.ttemp = 0;
+    // sprite_init(&context.temp, &context.textures[1], vec2(150.0f, 50.0f), vec2(192.0f, 192.0f), 0.0f, vec2(0.25f, 1.0f), vec2(0.25f, 0.0f), vec3(1.0f, 1.0f, 1.0f));
+    // context.ttemp = 0;
 
     // VIEW
     mat4_t projection = mat4_ortho(0.0f, (float) WINDOW_WIDTH, (float) WINDOW_HEIGHT, 0.0f, -1.0f, 1.0f);
@@ -519,12 +548,16 @@ void game_update(void) {
 
         // RENDERER
         context.level.floor.position = vec2_add(context.level.floor.position, vec2(500.0f, 0.0f));
-        renderer_draw(&context.renderer, &context.level.floor);
+        // renderer_draw(&context.renderer, &context.level.floor);
+        renderer_draw(&context.renderer, context.level.floor.texture, context.level.floor.position, context.level.floor.size, context.level.floor.scale, context.level.floor.offset);
         context.level.floor.position = vec2_sub(context.level.floor.position, vec2(500.0f, 0.0f));
-        renderer_draw(&context.renderer, &context.level.floor);
+        // renderer_draw(&context.renderer, &context.level.floor);
+        renderer_draw(&context.renderer, context.level.floor.texture, context.level.floor.position, context.level.floor.size, context.level.floor.scale, context.level.floor.offset);
         // printf("pos={x=%f, y=%f}\n", context.level.floor.position.x, context.level.floor.position.y);
 
-        renderer_draw(&context.renderer, &context.temp);
+        // renderer_draw(&context.renderer, &context.temp);
+        renderer_draw(&context.renderer, context.player.sprites[context.player.action].texture, vec2_add(context.player.position, context.player.sprites[context.player.action].position), context.player.sprites[context.player.action].size, context.player.sprites[context.player.action].scale, context.player.sprites[context.player.action].offset);
+        // renderer_draw(&context.renderer, &context.player.sprites[context.player.action]);
 
         // OPENGL
         glfwSwapBuffers(context.window);
