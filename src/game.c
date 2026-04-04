@@ -112,8 +112,8 @@ typedef struct {
 } texture_t;
 
 void texture_init(texture_t *texture, char *filepath) {
-    glGenTextures(1, &texture -> id);
-    glBindTexture(GL_TEXTURE_2D, texture -> id);
+    glGenTextures(1, &texture->id);
+    glBindTexture(GL_TEXTURE_2D, texture->id);
 
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
@@ -124,16 +124,16 @@ void texture_init(texture_t *texture, char *filepath) {
     stbi_set_flip_vertically_on_load(1);
     
     int32_t channels;
-    unsigned char *pixels = stbi_load(filepath, &texture -> width, &texture -> height, &channels, 0);
+    unsigned char *pixels = stbi_load(filepath, &texture->width, &texture->height, &channels, 0);
     ASSERT(pixels, "TEXTURE_READ_ERROR: %s", filepath);
 
     switch (channels) {
-        case 1: {texture -> format = GL_RED; break;}
-        case 3: {texture -> format = GL_RGB; break;}
-        case 4: {texture -> format = GL_RGBA; break;}
+        case 1: {texture->format = GL_RED; break;}
+        case 3: {texture->format = GL_RGB; break;}
+        case 4: {texture->format = GL_RGBA; break;}
     }
 
-    glTexImage2D(GL_TEXTURE_2D, 0, texture -> format, texture -> width, texture -> height, 0, texture -> format, GL_UNSIGNED_BYTE, pixels);
+    glTexImage2D(GL_TEXTURE_2D, 0, texture->format, texture->width, texture->height, 0, texture->format, GL_UNSIGNED_BYTE, pixels);
     // ?
 
     stbi_image_free(pixels);
@@ -366,6 +366,18 @@ static struct {
 #define GAME_MEMORY_CAPACITY (64 * 1024 * 1024) // 64 MB
 uint8_t GAME_MEMORY[GAME_MEMORY_CAPACITY];
 
+void _game_icon_init(void) {    
+    char *filepath = "assets/icon.png";
+    int32_t width, height, channels;
+    unsigned char *pixels = stbi_load(filepath, &width, &height, &channels, 0);
+    ASSERT(pixels, "ICON_READ_ERROR: %s", filepath);
+
+    GLFWimage images[1] = {(GLFWimage) {.width = width, .height = height, .pixels = pixels}};
+    glfwSetWindowIcon(context.window, 1, images);
+
+    stbi_image_free(pixels);
+}
+
 void _game_keyboard_callback(GLFWwindow *window, int32_t key, int32_t scan, int32_t action, int32_t mode) {
     if (key > -1 && key < 512) {
         if (action == GLFW_PRESS) {
@@ -460,7 +472,11 @@ void game_init(void) {
     glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
 
     // ICON
+#ifdef _WIN32
+    _game_icon_init();
+#else
     //..
+#endif
 
     // FRAMES
     context.clock.accumulator = 0.0;
