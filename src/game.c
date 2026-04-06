@@ -19,7 +19,7 @@
 
 #define WINDOW_WIDTH 800
 #define WINDOW_HEIGHT 600
-#define WINDOW_NAME "BattleArena 2D (Build v0.0.3)"
+#define WINDOW_NAME "BattleArena 2D (Build v0.0.8)"
 
 #define ASSERT(_e, ...) if (!(_e)) {fprintf(stderr, __VA_ARGS__); exit(1);}
 
@@ -200,7 +200,7 @@ void renderer_init(renderer_t *renderer, shader_t *shader) {
     glBindVertexArray(0);
 }
 
-void renderer_draw(renderer_t *renderer, texture_t *texture, vec2_t position, vec2_t size, vec2_t scale, vec2_t offset) {
+void renderer_draw(renderer_t *renderer, texture_t *texture, vec2_t position, vec2_t size, vec2_t scale, vec2_t offset, uint8_t mirror) {
     shader_use(renderer->shader);
 
     mat4_t model = mat4(1.0f);
@@ -214,6 +214,7 @@ void renderer_draw(renderer_t *renderer, texture_t *texture, vec2_t position, ve
     shader_set_mat4(renderer->shader, "u_Model", model);
     shader_set_vec2(renderer->shader, "u_Scale", scale);
     shader_set_vec2(renderer->shader, "u_Offset", offset);
+    shader_set_int(renderer->shader, "u_Mirror", mirror);
     shader_set_vec3(renderer->shader, "u_Color", vec3(1.0f, 1.0f, 1.0f));
     // shader_set_vec3(renderer->shader, "u_Color", sprite->color);
 
@@ -265,6 +266,7 @@ typedef struct {
 } character_state_t;
 
 typedef enum {
+    CHARACTER_ANIMATION_STEP_2 = 2,
     CHARACTER_ANIMATION_STEP_3 = 3,
     CHARACTER_ANIMATION_STEP_4 = 4,
     CHARACTER_ANIMATION_STEP_6 = 6
@@ -380,10 +382,14 @@ void _game_icon_init(void) {
 
 void _game_keyboard_callback(GLFWwindow *window, int32_t key, int32_t scan, int32_t action, int32_t mode) {
     if (key > -1 && key < 512) {
-        if (action == GLFW_PRESS) {
+        if (action == GLFW_PRESS) {  
             context.keys[key] = 1;
+            // printf("PRESS\n");
         } else if (action == GLFW_RELEASE) {
             context.keys[key] = 0;
+            // printf("RELEASE\n");
+        } else if (action == GLFW_REPEAT) {
+            // printf("REPEAT\n");
         }
     }
 }
@@ -394,26 +400,42 @@ void _game_keyboard_handle(void) {
         glfwSetWindowShouldClose(context.window, 1);
     }
     if (!context.keys[GLFW_KEY_W] && !context.keys[GLFW_KEY_S] && !context.keys[GLFW_KEY_A] && !context.keys[GLFW_KEY_D]) {
-        if (context.player.action == CHARACTER_ACTION_IDLE || context.player.animation.lock) return;
+
+        // printf("RELEASE_KEY_S\n");
+
+        if (context.player.action == CHARACTER_ACTION_IDLE || context.player.animation.lock == 1) return;
         context.player.action = CHARACTER_ACTION_IDLE;
         context.player.animation.step = CHARACTER_ANIMATION_STEP_4;
         context.player.animation.tick = 0;
         context.player.animation.lock = 0;
     }
-    if (context.keys[GLFW_KEY_W]) {}
+    if (context.keys[GLFW_KEY_W]) {/*context.keys[GLFW_KEY_W] = 2;*/}
     if (context.keys[GLFW_KEY_S]) {
-        // change hitbox
+        // physics
+        //..
+
+        // printf("PRESS_KEY_S\n");
+
         // animation
+        if (context.player.animation.lock == 1) {
+            context.player.animation.tick = context.player.mirror ? 1 : 2;
+            context.player.animation.lock = 2;
+            // printf("UPDATE_LOCK_2\n");
+        }
         if (context.player.action != CHARACTER_ACTION_CROUCH) {
             context.player.action = CHARACTER_ACTION_CROUCH;
             context.player.animation.step = CHARACTER_ANIMATION_STEP_4;
             context.player.animation.tick = 0;
-            // context.player.animation.lock = 1;
+            context.player.animation.lock = 1;
+            // printf("UPDATE_LOCK_1\n");
         }
     }
-    if (context.keys[GLFW_KEY_A]) {
+    if (context.keys[GLFW_KEY_A]) { 
+        if (context.player.animation.lock) return;
         if (context.player.position.x > 0) {
             context.player.position.x -= 4.0f;
+            // mirror
+            context.player.mirror = 1;
             // animation
             if (context.player.action != CHARACTER_ACTION_RUN) {
                 context.player.action = CHARACTER_ACTION_RUN;
@@ -422,10 +444,14 @@ void _game_keyboard_handle(void) {
                 // context.player.animation.lock = 1;
             }
         }
+        // context.keys[GLFW_KEY_A] = 2;
     }
     if (context.keys[GLFW_KEY_D]) {
+        if (context.player.animation.lock) return;
         if (context.player.position.x < (WINDOW_WIDTH - (context.player.sprites[context.player.action].size.x / 2))) {
             context.player.position.x += 4.0f;
+            // mirror
+            context.player.mirror = 0;
             // animation
             if (context.player.action != CHARACTER_ACTION_RUN) {
                 context.player.action = CHARACTER_ACTION_RUN;
@@ -434,6 +460,7 @@ void _game_keyboard_handle(void) {
                 // context.player.animation.lock = 1;
             }
         }
+        // context.keys[GLFW_KEY_D] = 2;
     }
 }
 
@@ -518,9 +545,9 @@ void game_init(void) {
     sprite_init(&context.player.sprites[1], &context.textures[2], vec2(0.0f, 0.0f), vec2(192.0f, 192.0f), 0.0f, vec2(0.25f, 1.0f), vec2(0.25f, 0.0f), vec3(1.0f, 1.0f, 1.0f)); // jump
     sprite_init(&context.player.sprites[2], &context.textures[3], vec2(0.0f, 0.0f), vec2(192.0f, 192.0f), 0.0f, vec2(0.167f, 1.0f), vec2(0.167f, 0.0f), vec3(1.0f, 1.0f, 1.0f)); // run
     sprite_init(&context.player.sprites[3], &context.textures[4], vec2(0.0f, 0.0f), vec2(192.0f, 192.0f), 0.0f, vec2(0.25f, 1.0f), vec2(0.25f, 0.0f), vec3(1.0f, 1.0f, 1.0f)); // crouch
-    sprite_init(&context.player.sprites[4], &context.textures[5], vec2(0.0f, 0.0f), vec2(128.0f, 128.0f), 0.0f, vec2(1.0f, 1.0f), vec2(0.0f, 0.0f), vec3(1.0f, 1.0f, 1.0f)); // hand idle
+    sprite_init(&context.player.sprites[4], &context.textures[5], vec2(10.0f, 18.0f), vec2(128.0f, 128.0f), 0.0f, vec2(1.0f, 1.0f), vec2(0.0f, 0.0f), vec3(1.0f, 1.0f, 1.0f)); // hand idle
     sprite_init(&context.player.sprites[5], &context.textures[6], vec2(10.0f, 18.0f), vec2(128.0f, 128.0f), 0.0f, vec2(1.0f, 1.0f), vec2(0.0f, 0.0f), vec3(1.0f, 1.0f, 1.0f)); // hand fire
-    // sprite_init(&context.player.sprites[6], &context.textures[7], vec2(0.0f, 0.0f), vec2(72.0f, 32.0f), 0.0f, vec2(1.0f, 1.0f), vec2(0.0f, 0.0f), vec3(1.0f, 1.0f, 1.0f)); // weapon idle
+    sprite_init(&context.player.sprites[6], &context.textures[7], vec2(0.0f, 0.0f), vec2(72.0f, 32.0f), 0.0f, vec2(1.0f, 1.0f), vec2(0.0f, 0.0f), vec3(1.0f, 1.0f, 1.0f)); // weapon idle
     sprite_init(&context.player.sprites[7], &context.textures[8], vec2(128.0f, 128.0f), vec2(72.0f, 32.0f), 0.0f, vec2(1.0f, 1.0f), vec2(0.0f, 0.0f), vec3(1.0f, 1.0f, 1.0f)); // weapon fire
 
     // LEVEL
@@ -528,7 +555,6 @@ void game_init(void) {
     // sprite_init(&context.enemy.floor, &context.textures[0], vec2(780.0f, 0.0f), vec2(500.0f, 100.0f), 0.0f, vec3(1.0f, 1.0f, 1.0f));
     sprite_init(&context.level.floor, &context.textures[0], vec2(0.0f, 0.0f), vec2(300.0f, 50.0f), 0.0f, vec2(1.0f, 1.0f), vec2(0.0f, 0.0f), vec3(1.0f, 1.0f, 1.0f));
     // sprite_init(&context.temp, &context.textures[1], vec2(150.0f, 50.0f), vec2(192.0f, 192.0f), 0.0f, vec2(0.25f, 1.0f), vec2(0.25f, 0.0f), vec3(1.0f, 1.0f, 1.0f));
-    // context.ttemp = 0;
 
     // VIEW
     mat4_t projection = mat4_ortho(0.0f, (float) WINDOW_WIDTH, (float) WINDOW_HEIGHT, 0.0f, -1.0f, 1.0f);
@@ -588,8 +614,12 @@ void game_update(void) {
                 context.animation.time -= GAME_ANIMATION_FIXED_TIMESTEP;
 
                 context.player.sprites[context.player.action].offset.x = (context.player.sprites[context.player.action].scale.x * context.player.animation.tick);
-                if (context.player.animation.tick < context.player.animation.step) context.player.animation.tick++;
-                else if (!context.player.animation.lock) context.player.animation.tick = 0;
+                if (context.player.animation.lock != 2 && context.player.animation.tick < context.player.animation.step) context.player.animation.tick++;
+                else if (context.player.animation.lock != 2) context.player.animation.tick = 0;
+                // else context.player.animation.tick = 0;
+                // else if (context.player.animation.tick == context.player.animation.step && context.player.animation.lock == 2) context.player.animation.lock = 0;
+                // if (context.player.animation.lock) context.player.animation.tick = 0;
+                // else if ()
                 // else context.player.animation.tick = 0;
 
                  // it can only work properly if the whole animation is played out
@@ -604,19 +634,14 @@ void game_update(void) {
 
         // RENDERER
         context.level.floor.position = vec2_add(context.level.floor.position, vec2(500.0f, 0.0f));
-        // renderer_draw(&context.renderer, &context.level.floor);
-        renderer_draw(&context.renderer, context.level.floor.texture, context.level.floor.position, context.level.floor.size, context.level.floor.scale, context.level.floor.offset);
+        renderer_draw(&context.renderer, context.level.floor.texture, context.level.floor.position, context.level.floor.size, context.level.floor.scale, context.level.floor.offset, 0);
         context.level.floor.position = vec2_sub(context.level.floor.position, vec2(500.0f, 0.0f));
-        // renderer_draw(&context.renderer, &context.level.floor);
-        renderer_draw(&context.renderer, context.level.floor.texture, context.level.floor.position, context.level.floor.size, context.level.floor.scale, context.level.floor.offset);
+        renderer_draw(&context.renderer, context.level.floor.texture, context.level.floor.position, context.level.floor.size, context.level.floor.scale, context.level.floor.offset, 0);
         // printf("pos={x=%f, y=%f}\n", context.level.floor.position.x, context.level.floor.position.y);
 
-        // renderer_draw(&context.renderer, &context.temp);
-        renderer_draw(&context.renderer, context.player.sprites[5].texture, vec2_add(context.player.position, context.player.sprites[5].position), context.player.sprites[5].size, context.player.sprites[5].scale, context.player.sprites[5].offset);
-        // renderer_draw(&context.renderer, context.player.sprites[7].texture, vec2_add(context.player.position, context.player.sprites[7].position), context.player.sprites[7].size, context.player.sprites[7].scale, context.player.sprites[7].offset);
-        renderer_draw(&context.renderer, context.player.sprites[context.player.action].texture, vec2_add(context.player.position, context.player.sprites[context.player.action].position), context.player.sprites[context.player.action].size, context.player.sprites[context.player.action].scale, context.player.sprites[context.player.action].offset);
+        // renderer_draw(&context.renderer, context.player.sprites[4].texture, vec2_add(context.player.position, context.player.sprites[4].position), context.player.sprites[4].size, context.player.sprites[4].scale, context.player.sprites[4].offset);
+        renderer_draw(&context.renderer, context.player.sprites[context.player.action].texture, vec2_add(context.player.position, context.player.sprites[context.player.action].position), context.player.sprites[context.player.action].size, context.player.sprites[context.player.action].scale, context.player.sprites[context.player.action].offset, context.player.mirror);
         // renderer_draw(&context.renderer, context.player.sprites[5].texture, vec2_add(context.player.position, context.player.sprites[5].position), context.player.sprites[5].size, context.player.sprites[5].scale, context.player.sprites[5].offset);
-        // renderer_draw(&context.renderer, &context.player.sprites[context.player.action]);
 
         // OPENGL
         glfwSwapBuffers(context.window);
