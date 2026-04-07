@@ -226,38 +226,30 @@ void renderer_draw(renderer_t *renderer, texture_t *texture, vec2_t position, ve
     glBindVertexArray(0);
 }
 
-// void renderer_draw(renderer_t *renderer, sprite_t *sprite) {
-//     shader_use(renderer->shader);
-
-//     mat4_t model = mat4(1.0f);
-//     model = mat4_trans(model, vec3(sprite->position.x, sprite->position.y, 0.0f));
-//     model = mat4_trans(model, vec3(sprite->size.x * 0.5f, sprite->size.y * 0.5f, 0.0f));
-//     // model = mat4_rot(model, float_rad(sprite -> rotation), vec3(0.0f, 0.0f, 1.0f));
-//     model = mat4_rot(model, sprite->rotation, vec3(0.0f, 0.0f, 1.0f));
-//     model = mat4_trans(model, vec3(sprite->size.x * (-0.5f), sprite->size.y * (-0.5f), 0.0f));
-//     model = mat4_scale(model, vec3(sprite->size.x, sprite->size.y, 1.0f));
-
-//     shader_set_mat4(renderer->shader, "u_Model", model);
-//     shader_set_vec2(renderer->shader, "u_Scale", sprite->scale);
-//     shader_set_vec2(renderer->shader, "u_Offset", sprite->offset);
-//     shader_set_vec3(renderer->shader, "u_Color", sprite->color);
-
-//     glActiveTexture(GL_TEXTURE0);
-//     texture_bind(sprite->texture);
-
-//     glBindVertexArray(renderer->vao);
-//     glDrawArrays(GL_TRIANGLES, 0, 6);
-//     glBindVertexArray(0);
-// }
-
 // GAME
+
+typedef struct {
+    // vec2_t position;
+    vec2_t min, max;
+    vec2_t velocity;
+    uint8_t ground;
+} collision_box_t;
+
+// until there is a collision, velocity should be constantly (-ffs, 0?);
+    // ffs = free fall speed, 0? = it should always strive to reach a verticall fall
+
+uint8_t collision_box_intersection(collision_box_t *a, collision_box_t *b) {
+    return (((b->min.x <= a->max.x) && (b->max.x >= a->min.x)) && ((b->min.y <= a->max.y) && (b->max.y >= a->min.y)));
+}
 
 typedef enum {
     CHARACTER_ACTION_IDLE = 0,
     CHARACTER_ACTION_JUMP = 1,
     CHARACTER_ACTION_RUN = 2,
     CHARACTER_ACTION_CROUCH = 3
-} character_action_t;
+} character_action_t; // change to bit flags
+// actor_action_t;
+// shell_action_t;
 
 typedef struct {
     vec2_t position, size;
@@ -270,7 +262,7 @@ typedef enum {
     CHARACTER_ANIMATION_STEP_3 = 3,
     CHARACTER_ANIMATION_STEP_4 = 4,
     CHARACTER_ANIMATION_STEP_6 = 6
-} character_animation_step_t;
+} character_animation_step_t; // change to bit flags
 
 typedef struct {
     character_animation_step_t step;
@@ -279,6 +271,7 @@ typedef struct {
 
 typedef struct {
     vec2_t position;
+    collision_box_t box;
     // sprites as array? and action == index (with pos relative to character's pose?), pos
     sprite_t *sprites;
     // enum (or uint8_t) for current action (idle, jump, run, crouch)
@@ -355,6 +348,7 @@ static struct {
 
     struct {
         sprite_t floor;
+        collision_box_t box;
     } level;
 
     character_t player;
@@ -409,7 +403,22 @@ void _game_keyboard_handle(void) {
         context.player.animation.tick = 0;
         context.player.animation.lock = 0;
     }
-    if (context.keys[GLFW_KEY_W]) {/*context.keys[GLFW_KEY_W] = 2;*/}
+    if (context.keys[GLFW_KEY_W]) {
+        // physics
+        if (context.keys[GLFW_KEY_A] && !context.keys[GLFW_KEY_D]) {} // NE velocity
+        if (context.keys[GLFW_KEY_D] && !context.keys[GLFW_KEY_A]) {} // NW velocity
+        
+        // context.player.position
+        // collision
+
+        // animation
+        if (context.player.action != CHARACTER_ACTION_JUMP) {
+            context.player.action = CHARACTER_ACTION_JUMP;
+            context.player.animation.step = CHARACTER_ANIMATION_STEP_4;
+            context.player.animation.tick = 0;
+            context.player.animation.lock = 1;
+        }
+    }
     if (context.keys[GLFW_KEY_S]) {
         // physics
         //..
@@ -534,7 +543,8 @@ void game_init(void) {
     renderer_init(&context.renderer, &context.shaders[0]);
 
     // CHARACTER
-    context.player.position = vec2(150.0f, 50.0f);
+    context.player.position = vec2(150.0f, 100.0f);
+    context.player.box = (collision_box_t) {.min = vec2(150.0f, 100.0f), .max = vec2(342.0f, 292.0f), .velocity = vec2(0.0f, 0.0f), .ground = 0};
     context.player.sprites = mem_arena_alloc(&context.arena, 8 * sizeof(sprite_t));
     context.player.action = CHARACTER_ACTION_IDLE;
     context.player.animation = (character_animation_t) {.step = CHARACTER_ANIMATION_STEP_4, .tick = 0, .lock = 0};
@@ -553,6 +563,7 @@ void game_init(void) {
     // LEVEL
     // sprite_init(&context.player.floor, &context.textures[0], vec2(0.0f, 0.0f), vec2(500.0f, 100.0f), 0.0f, vec3(1.0f, 1.0f, 1.0f));
     // sprite_init(&context.enemy.floor, &context.textures[0], vec2(780.0f, 0.0f), vec2(500.0f, 100.0f), 0.0f, vec3(1.0f, 1.0f, 1.0f));
+    context.level.box = (collision_box_t) {.min = vec2(0.0f, 0.0f), .max = vec2(300.0f, 50.0f), .velocity = vec2(0.0f, 0.0f), .ground = 1};
     sprite_init(&context.level.floor, &context.textures[0], vec2(0.0f, 0.0f), vec2(300.0f, 50.0f), 0.0f, vec2(1.0f, 1.0f), vec2(0.0f, 0.0f), vec3(1.0f, 1.0f, 1.0f));
     // sprite_init(&context.temp, &context.textures[1], vec2(150.0f, 50.0f), vec2(192.0f, 192.0f), 0.0f, vec2(0.25f, 1.0f), vec2(0.25f, 0.0f), vec3(1.0f, 1.0f, 1.0f));
 
@@ -606,6 +617,21 @@ void game_update(void) {
 
             // update game logic
             _game_keyboard_handle();
+
+            if (!context.player.box.ground) {
+                printf("PLAYER_NOT_GROUND\n");
+                if (collision_box_intersection(&context.player.box, &context.level.box)) {
+                    context.player.box.velocity = vec2(0.0f, 0.0f);
+                    context.player.box.ground = 1;
+                    printf("PLAYER_COLLISION\n");
+                } else {
+                     context.player.box.velocity = vec2(0.0f, 1.0f);
+                }
+                context.player.position = vec2_sub(context.player.position, context.player.box.velocity);
+            }
+
+            context.player.box.min = vec2(context.player.position.x, context.player.position.y);
+            context.player.box.max = vec2(context.player.position.x + 192, context.player.position.y + 192);
 
             // ANIMATION
             context.animation.time += GAME_SIMULATION_FIXED_TIMESTEP;
