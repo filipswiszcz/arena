@@ -255,6 +255,7 @@ typedef struct {
 } actor_state_t;
 
 typedef enum {
+    ACTOR_ANIMATION_STEP_1 = 1,
     ACTOR_ANIMATION_STEP_2 = 2,
     ACTOR_ANIMATION_STEP_3 = 3,
     ACTOR_ANIMATION_STEP_4 = 4,
@@ -384,6 +385,14 @@ void _game_keyboard_handle_f(void) {
     // if (context.state == GAME_PAUSE) return;
     if (context.keys[GLFW_KEY_ESCAPE]) {glfwSetWindowShouldClose(context.window, 1);}
 
+    if (!context.keys[GLFW_KEY_W] && !context.keys[GLFW_KEY_S] && !context.keys[GLFW_KEY_A] && !context.keys[GLFW_KEY_D]) {
+        if (context.player.action != ACTOR_ACTION_IDLE) {
+            context.player.action = ACTOR_ACTION_IDLE;
+            context.player.animation.step = ACTOR_ANIMATION_STEP_4;
+            context.player.animation.tick = 0;
+        }
+    }
+
     // TODO
     // i have to detect key as one-press
         // one action for one press
@@ -401,25 +410,29 @@ void _game_keyboard_handle_f(void) {
         }
     }
     if (!context.keys[GLFW_KEY_W]) {
-        if (context.player.box.lock == 1) {
-            context.player.box.lock = 2;
+        if (context.player.box.lock == 1) context.player.box.lock = 2;
+    }
+
+    if (context.keys[GLFW_KEY_A] && !context.keys[GLFW_KEY_S]) {
+        if ((context.player.position.x - 4.0f) >= 0) context.player.box.velocity.x = -4.0f;
+        // ANIMATION
+        context.player.mirror = 1;
+        if (context.player.action != ACTOR_ACTION_RUN) {
+            context.player.action = ACTOR_ACTION_RUN;
+            context.player.animation.step = ACTOR_ANIMATION_STEP_6;
+            context.player.animation.tick = 0;
         }
     }
 
-    if (context.keys[GLFW_KEY_S]) {}
-
-    if (context.keys[GLFW_KEY_A]) {
-        if ((context.player.position.x - 4.0f) >= 0) context.player.box.velocity.x = -4.0f;
-
-        // ANIMATION
-        context.player.mirror = 1;
-    }
-
-    if (context.keys[GLFW_KEY_D]) {
+    if (context.keys[GLFW_KEY_D] && !context.keys[GLFW_KEY_S]) {
         if ((context.player.position.x + 4.0f) <= (WINDOW_WIDTH - (context.player.sprites[context.player.action].size.x / 2))) context.player.box.velocity.x = 4.0f;
-        
         // ANIMATION
         context.player.mirror = 0;
+        if (context.player.action != ACTOR_ACTION_RUN) {
+            context.player.action = ACTOR_ACTION_RUN;
+            context.player.animation.step = ACTOR_ANIMATION_STEP_6;
+            context.player.animation.tick = 0;
+        }
     }
 
     // preposition test
@@ -434,6 +447,14 @@ void _game_keyboard_handle_f(void) {
     context.player.position = vec2_add(context.player.position, context.player.box.velocity);
     context.player.box.min = vec2(context.player.position.x, context.player.position.y);
     context.player.box.max = vec2(context.player.position.x + 192, context.player.position.y + 192);
+
+    if (context.keys[GLFW_KEY_S]) {
+        context.player.box.max.y = context.player.position.y + 144;
+        // ANIMATION
+        context.player.action = ACTOR_ACTION_CROUCH;
+        context.player.animation.step = ACTOR_ANIMATION_STEP_1;
+        context.player.animation.tick = context.player.mirror ? 1 : 2;
+    }
 
     if (collision_box_intersection(&context.player.box, &context.level.box)) {
         context.player.box.velocity = vec2(0.0f, 0.0f);
@@ -676,6 +697,7 @@ void game_update(void) {
                 context.player.sprites[context.player.action].offset.x = (context.player.sprites[context.player.action].scale.x * context.player.animation.tick);
                 if (context.player.animation.lock != 2 && context.player.animation.tick < context.player.animation.step) context.player.animation.tick++;
                 else if (context.player.animation.lock != 2) context.player.animation.tick = 0;
+
                 // else context.player.animation.tick = 0;
                 // else if (context.player.animation.tick == context.player.animation.step && context.player.animation.lock == 2) context.player.animation.lock = 0;
                 // if (context.player.animation.lock) context.player.animation.tick = 0;
