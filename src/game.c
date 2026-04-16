@@ -200,7 +200,7 @@ void renderer_init(renderer_t *renderer, shader_t *shader) {
     glBindVertexArray(0);
 }
 
-void renderer_draw(renderer_t *renderer, texture_t *texture, vec2_t position, vec2_t size, vec2_t scale, vec2_t offset, uint8_t mirror) {
+void renderer_draw(renderer_t *renderer, texture_t *texture, vec2_t position, vec2_t size, vec2_t scale, vec2_t offset, uint8_t mirror, float time) {
     shader_use(renderer->shader);
 
     mat4_t model = mat4(1.0f);
@@ -217,6 +217,8 @@ void renderer_draw(renderer_t *renderer, texture_t *texture, vec2_t position, ve
     shader_set_int(renderer->shader, "u_Mirror", mirror);
     shader_set_vec3(renderer->shader, "u_Color", vec3(1.0f, 1.0f, 1.0f));
     // shader_set_vec3(renderer->shader, "u_Color", sprite->color);
+    shader_set_float(renderer->shader, "u_GlitchTime", time);
+    shader_set_float(renderer->shader, "u_GlitchIntensity", 0.1f);
 
     glActiveTexture(GL_TEXTURE0);
     texture_bind(texture);
@@ -231,7 +233,7 @@ void renderer_draw(renderer_t *renderer, texture_t *texture, vec2_t position, ve
 typedef struct {
     vec2_t min, max; // offsets to global pos
     vec2_t velocity;
-    uint8_t lock, ground;
+    uint8_t lock, impact;
 } collision_box_t;
 
 // until there is a collision, velocity should be constantly (-ffs, 0?);
@@ -275,17 +277,18 @@ typedef struct {
     // enum (or uint8_t) for current action (idle, jump, run, crouch)
     actor_action_t action;
     actor_animation_t animation;
-    // uint8_t tick;
     // actor_state_t cstate, pstate;
+    uint16_t cooldown;
     uint8_t mirror;
     uint8_t fire; // it manages hand and gun | when 1, then hand and gun are going vert (animation)
 } actor_t;
 
 typedef struct {
-    // owner?
-    // sprite
+    vec2_t position;
+    collision_box_t box;
+    sprite_t sprite;
     // current animation
-    uint8_t mirror;
+    uint8_t source, mirror;
 } bullet_t;
 
 typedef struct {
@@ -346,6 +349,8 @@ static struct {
     struct {
         sprite_t background, floor;
         collision_box_t box;
+        bullet_t bullets[16];
+        uint32_t counter;
     } level;
 
     actor_t player;
@@ -403,8 +408,8 @@ void _game_keyboard_handle_f(void) {
         if (context.player.box.lock == 0) {
             context.player.box.velocity.y = 12.0f;
             context.player.box.lock = 1;
-            context.player.box.ground = 0;
-        } else if (context.player.box.lock == 2 && !context.player.box.ground) {
+            context.player.box.impact = 0;
+        } else if (context.player.box.lock == 2 && !context.player.box.impact) {
             context.player.box.velocity.y = 16.0f;
             context.player.box.lock = 3;
         }
@@ -446,26 +451,40 @@ void _game_keyboard_handle_f(void) {
 
     context.player.position = vec2_add(context.player.position, context.player.box.velocity);
     context.player.box.min = vec2(context.player.position.x, context.player.position.y);
-    context.player.box.max = vec2(context.player.position.x + 192, context.player.position.y + 192);
+    context.player.box.max = vec2(context.player.position.x + 144, context.player.position.y + 144);
 
     if (context.keys[GLFW_KEY_S]) {
-        context.player.box.max.y = context.player.position.y + 144;
+        context.player.box.max.y = context.player.position.y + 96;
         // ANIMATION
         context.player.action = ACTOR_ACTION_CROUCH;
         context.player.animation.step = ACTOR_ANIMATION_STEP_1;
-        context.player.animation.tick = context.player.mirror ? 1 : 2;
+        context.player.animation.tick = 2;
     }
 
     if (collision_box_intersection(&context.player.box, &context.level.box)) {
         context.player.box.velocity = vec2(0.0f, 0.0f);
-        if (context.player.box.lock) context.player.box.lock = 0;
-        context.player.box.ground = 1;
+        if (context.player.box.lock) context.player.box.lock = 0; 
+        context.player.box.impact = 1;
         // printf("PLAYER_COLLISION\n");
     } else {
         context.player.box.velocity.y += -1;
         printf("PLAYER_VELOCITY={x=%f, y=%f}\n", context.player.box.velocity.x, context.player.box.velocity.y);
     }
 
+    if (context.keys[GLFW_KEY_F]) {
+        if (context.level.counter < 4) {
+            bullet_t bullet = {
+                .position = vec2(context.player.box.max.x + 0.0f, context.player.box.max.y - 0.0f),
+                .box = (collision_box_t) {.min = vec2(0.0f, 0.0f), .max = vec2(16.0f, 8.0f), .velocity = vec2(1.0f, 0.1f), .lock = 0, .impact = 0},
+                .sprite = context.player.sprites[4],
+                .source = 0,
+                .mirror = context.player.mirror
+            };
+            context.level.bullets[context.level.counter++] = bullet;
+            printf("BULLET_POSITION={x=%f, y=%f}\n", bullet.position.x, bullet.position.y);
+        }
+    }
+   
 }
 
 void _game_keyboard_handle(void) {
@@ -488,7 +507,7 @@ void _game_keyboard_handle(void) {
         // animation
         if (context.player.animation.lock != 1) {
             context.player.box.velocity.y += 32;
-            context.player.box.ground = 0;
+            context.player.box.impact = 0;
         }
         if (context.player.action != ACTOR_ACTION_JUMP) {
             context.player.action = ACTOR_ACTION_JUMP;
@@ -606,6 +625,8 @@ void game_init(void) {
     texture_init(&context.textures[2], "assets/texture/player/body/jump.png");
     texture_init(&context.textures[3], "assets/texture/player/body/run.png");
     texture_init(&context.textures[4], "assets/texture/player/body/crouch.png");
+    
+    texture_init(&context.textures[5], "assets/texture/projectile.png");
     // texture_init(&context.textures[5], "assets/texture/player/body/hand/hand_idle.png");
     // texture_init(&context.textures[6], "assets/texture/player/body/hand/hand_fire.png");
     // texture_init(&context.textures[7], "assets/texture/player/weapon/gun_idle.png");
@@ -626,13 +647,13 @@ void game_init(void) {
     // GAME LEVEL
 
     // level
-    context.level.box = (collision_box_t) {.min = vec2(0.0f, 0.0f), .max = vec2(800.0f, 50.0f), .velocity = vec2(0.0f, 0.0f), .lock = 0, .ground = 1};
+    context.level.box = (collision_box_t) {.min = vec2(0.0f, 0.0f), .max = vec2(800.0f, 50.0f), .velocity = vec2(0.0f, 0.0f), .lock = 0, .impact = 1};
 
     sprite_init(&context.level.floor, &context.textures[0], vec2(0.0f, 0.0f), vec2(800.0f, 50.0f), 0.0f, vec2(1.0f, 1.0f), vec2(0.0f, 0.0f), vec3(1.0f, 1.0f, 1.0f));
 
     // actor
     context.player.position = vec2(150.0f, 100.0f);
-    context.player.box = (collision_box_t) {.min = vec2(150.0f, 100.0f), .max = vec2(342.0f, 292.0f), .velocity = vec2(0.0f, 0.0f), .lock = 0, .ground = 0};
+    context.player.box = (collision_box_t) {.min = vec2(150.0f, 100.0f), .max = vec2(342.0f, 292.0f), .velocity = vec2(0.0f, 0.0f), .lock = 0, .impact = 0};
     context.player.sprites = mem_arena_alloc(&context.arena, 8 * sizeof(sprite_t));
     context.player.action = ACTOR_ACTION_IDLE;
     context.player.animation = (actor_animation_t) {.step = ACTOR_ANIMATION_STEP_4, .tick = 0, .lock = 0};
@@ -643,6 +664,9 @@ void game_init(void) {
     sprite_init(&context.player.sprites[1], &context.textures[2], vec2(0.0f, 0.0f), vec2(192.0f, 192.0f), 0.0f, vec2(0.25f, 1.0f), vec2(0.25f, 0.0f), vec3(1.0f, 1.0f, 1.0f)); // jump
     sprite_init(&context.player.sprites[2], &context.textures[3], vec2(0.0f, 0.0f), vec2(192.0f, 192.0f), 0.0f, vec2(0.167f, 1.0f), vec2(0.167f, 0.0f), vec3(1.0f, 1.0f, 1.0f)); // run
     sprite_init(&context.player.sprites[3], &context.textures[4], vec2(0.0f, 0.0f), vec2(192.0f, 192.0f), 0.0f, vec2(0.25f, 1.0f), vec2(0.25f, 0.0f), vec3(1.0f, 1.0f, 1.0f)); // crouch
+
+    // bullet
+    sprite_init(&context.player.sprites[4], &context.textures[5], vec2(0.0f, 0.0f), vec2(24.0f, 16.0f), 0.0f, vec2(1.0f, 1.0f), vec2(0.0f, 0.0f), vec3(1.0f, 1.0f, 1.0f)); // projectile
 
 }
 
@@ -697,12 +721,6 @@ void game_update(void) {
                 context.player.sprites[context.player.action].offset.x = (context.player.sprites[context.player.action].scale.x * context.player.animation.tick);
                 if (context.player.animation.lock != 2 && context.player.animation.tick < context.player.animation.step) context.player.animation.tick++;
                 else if (context.player.animation.lock != 2) context.player.animation.tick = 0;
-
-                // else context.player.animation.tick = 0;
-                // else if (context.player.animation.tick == context.player.animation.step && context.player.animation.lock == 2) context.player.animation.lock = 0;
-                // if (context.player.animation.lock) context.player.animation.tick = 0;
-                // else if ()
-                // else context.player.animation.tick = 0;
             }
 
             context.clock.accumulator -= GAME_SIMULATION_FIXED_TIMESTEP;
@@ -711,10 +729,14 @@ void game_update(void) {
         // double alpha = context.clock.accumulator / GAME_SIMULATION_FIXED_TIMESTEP;
 
         // RENDERER
-        renderer_draw(&context.renderer, context.level.floor.texture, context.level.floor.position, context.level.floor.size, context.level.floor.scale, context.level.floor.offset, 0);
+        renderer_draw(&context.renderer, context.level.floor.texture, context.level.floor.position, context.level.floor.size, context.level.floor.scale, context.level.floor.offset, 0, current_time);
         // printf("pos={x=%f, y=%f}\n", context.level.floor.position.x, context.level.floor.position.y);
 
-        renderer_draw(&context.renderer, context.player.sprites[context.player.action].texture, vec2_add(context.player.position, context.player.sprites[context.player.action].position), context.player.sprites[context.player.action].size, context.player.sprites[context.player.action].scale, context.player.sprites[context.player.action].offset, context.player.mirror);
+        renderer_draw(&context.renderer, context.player.sprites[context.player.action].texture, vec2_add(context.player.position, context.player.sprites[context.player.action].position), context.player.sprites[context.player.action].size, context.player.sprites[context.player.action].scale, context.player.sprites[context.player.action].offset, context.player.mirror, current_time);
+
+        for (uint32_t i = 0; i < context.level.counter; i++) {
+            renderer_draw(&context.renderer, context.level.bullets[i].sprite.texture, vec2_add(context.level.bullets[i].position, context.level.bullets[i].sprite.position), context.level.bullets[i].sprite.size, context.level.bullets[i].sprite.scale, context.level.bullets[i].sprite.offset, context.level.bullets[i].mirror, current_time);
+        }
 
         // OPENGL
         glfwSwapBuffers(context.window);
