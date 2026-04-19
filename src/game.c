@@ -19,7 +19,7 @@
 
 #define WINDOW_WIDTH 800
 #define WINDOW_HEIGHT 600
-#define WINDOW_NAME "BattleArena 2D (Build v0.0.8)"
+#define WINDOW_NAME "BattleArena 2D (Build v0.0.9)"
 
 #define ASSERT(_e, ...) if (!(_e)) {fprintf(stderr, __VA_ARGS__); exit(1);}
 
@@ -317,17 +317,16 @@ typedef struct {
 // - an array with static sprites, that are drawn each update
 // - a queue with dynamic sprites, that are drawn and removed
 
+#define GAME_SIMULATION_FIXED_TIMESTEP 1.0f / 60.0f
+#define GAME_ANIMATION_FIXED_TIMESTEP 1.0f / 8.0f
+
+#define GAME_MEMORY_CAPACITY (64 * 1024 * 1024) // 64 MB
+uint8_t GAME_MEMORY[GAME_MEMORY_CAPACITY];
+
 static struct {
     GLFWwindow *window;
 
     int32_t keys[512];
-
-    // struct {
-    //     double time_of_last_frame;
-    //     double time_between_frames;
-    //     double time_accumulated;
-    //     uint32_t count;
-    // } fps;
 
     struct {
         double time_of_last_frame;
@@ -336,7 +335,12 @@ static struct {
     } clock;
 
     struct {
-        double time;
+        double accumulator;
+        uint32_t counter;
+    } fps;
+
+    struct {
+        double accumulator;
     } animation;
 
     mem_arena_t arena;
@@ -357,12 +361,6 @@ static struct {
     actor_t enemy;
 
 } context; // rename to game
-
-#define GAME_SIMULATION_FIXED_TIMESTEP 1.0f / 60.0f
-#define GAME_ANIMATION_FIXED_TIMESTEP 1.0f / 6.0f
-
-#define GAME_MEMORY_CAPACITY (64 * 1024 * 1024) // 64 MB
-uint8_t GAME_MEMORY[GAME_MEMORY_CAPACITY];
 
 void _game_icon_init(void) {    
     char *filepath = "assets/icon.png";
@@ -397,12 +395,6 @@ void _game_keyboard_handle_f(void) {
             context.player.animation.tick = 0;
         }
     }
-
-    // TODO
-    // i have to detect key as one-press
-        // one action for one press
-        // press once, lock, perform jump
-        // add doublejump
 
     if (context.keys[GLFW_KEY_W]) {
         if (context.player.box.lock == 0) {
@@ -472,16 +464,29 @@ void _game_keyboard_handle_f(void) {
     }
 
     if (context.keys[GLFW_KEY_F]) {
-        if (context.level.counter < 4) {
+        if (context.level.counter < 4 && context.player.cooldown == 0) {
             bullet_t bullet = {
-                .position = vec2(context.player.box.max.x + 0.0f, context.player.box.max.y - 0.0f),
-                .box = (collision_box_t) {.min = vec2(0.0f, 0.0f), .max = vec2(16.0f, 8.0f), .velocity = vec2(1.0f, 0.1f), .lock = 0, .impact = 0},
+                .position = vec2(context.player.box.max.x + 0.0f, context.player.box.max.y - 48.0f), // get position of the gun
+                // pos and box has to be affected by mirror
+                .box = (collision_box_t) {.min = vec2(0.0f, 0.0f), .max = vec2(16.0f, 8.0f), .velocity = vec2(4.0f, -0.05f), .lock = 0, .impact = 0},
                 .sprite = context.player.sprites[4],
                 .source = 0,
                 .mirror = context.player.mirror
             };
             context.level.bullets[context.level.counter++] = bullet;
             printf("BULLET_POSITION={x=%f, y=%f}\n", bullet.position.x, bullet.position.y);
+            context.player.cooldown = 60;
+        }
+    }
+
+    if (context.player.cooldown > 0) {
+         context.player.cooldown--;
+    }
+
+    if (context.level.counter > 0) {
+        for (uint32_t i = 0; i < context.level.counter; i++) {
+            if (context.level.bullets[i].position.x < 0 || context.level.bullets[i].position.x > WINDOW_WIDTH) continue;
+            context.level.bullets[i].position = vec2_add(context.level.bullets[i].position, context.level.bullets[i].box.velocity);
         }
     }
    
@@ -583,6 +588,7 @@ void game_init(void) {
     glfwMakeContextCurrent(context.window);
     glfwSetKeyCallback(context.window, _game_keyboard_callback);
     // glfwSetInputMode(context.window, GLFW_CURSOR, GLFW_CURSOR_DISABLED);
+    glfwSwapInterval(1);
 
     // GLEW
 #ifndef __APPLE__
@@ -605,10 +611,6 @@ void game_init(void) {
     //..
 #endif
 
-    // FRAMES
-    context.clock.accumulator = 0.0;
-    context.animation.time = 0.0;
-
     // MEMORY
     mem_arena_init(&context.arena, &GAME_MEMORY, GAME_MEMORY_CAPACITY);
 
@@ -616,7 +618,6 @@ void game_init(void) {
     context.shaders = mem_arena_alloc(&context.arena, 4 * sizeof(shader_t));
     shader_init(&context.shaders[0], "shader/sprite.vs", "shader/sprite.fs");
     // crt shader?
-    // glitch shader
 
     // TEXTURE
     context.textures = mem_arena_alloc(&context.arena, 8 * sizeof(texture_t));
@@ -625,12 +626,7 @@ void game_init(void) {
     texture_init(&context.textures[2], "assets/texture/player/body/jump.png");
     texture_init(&context.textures[3], "assets/texture/player/body/run.png");
     texture_init(&context.textures[4], "assets/texture/player/body/crouch.png");
-    
     texture_init(&context.textures[5], "assets/texture/projectile.png");
-    // texture_init(&context.textures[5], "assets/texture/player/body/hand/hand_idle.png");
-    // texture_init(&context.textures[6], "assets/texture/player/body/hand/hand_fire.png");
-    // texture_init(&context.textures[7], "assets/texture/player/weapon/gun_idle.png");
-    // texture_init(&context.textures[8], "assets/texture/player/weapon/gun_fire.png");
     //..
 
     // GAME RENDERER
@@ -670,21 +666,6 @@ void game_init(void) {
 
 }
 
-// void _game_fps_record(void) {
-//     double curr_time = glfwGetTime();
-//     context.fps.time_between_frames = (float) (curr_time - context.fps.time_of_last_frame);
-//     context.fps.time_of_last_frame = curr_time;
-//     context.fps.time_accumulated += context.fps.time_between_frames;
-//     context.fps.count++;
-//     if (context.fps.time_accumulated >= 1.0f) {
-//         char title[64];
-//         sprintf(title, "%s [%d FPS]", WINDOW_NAME, context.fps.count);
-//         glfwSetWindowTitle(context.window, title);
-//         context.fps.time_accumulated = 0.0f;
-//         context.fps.count = 0;
-//     }
-// }
-
 void game_update(void) {
     context.clock.time_of_last_frame = glfwGetTime();
     while (!glfwWindowShouldClose(context.window)) {
@@ -692,13 +673,21 @@ void game_update(void) {
         // OPENGL 
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
-        // FPS
-        // _game_fps_record();
-
         // SIMULATION
         double current_time = glfwGetTime();
         context.clock.time_between_frames = current_time - context.clock.time_of_last_frame;
         context.clock.time_of_last_frame = current_time;
+
+        context.fps.accumulator += context.clock.time_between_frames;
+        context.fps.counter++;
+
+        if (context.fps.accumulator >= 1.0f) {
+            char title[64];
+            sprintf(title, "%s [%.0f FPS]", WINDOW_NAME, (double) context.fps.counter / context.fps.accumulator);
+            glfwSetWindowTitle(context.window, title);
+            context.fps.accumulator -= 1.0;
+            context.fps.counter = 0;
+        }
 
         if (context.clock.time_between_frames > 0.25) {
             context.clock.time_between_frames = 0.25;
@@ -713,10 +702,10 @@ void game_update(void) {
             _game_keyboard_handle_f();
 
             // ANIMATION
-            context.animation.time += GAME_SIMULATION_FIXED_TIMESTEP;
+            context.animation.accumulator += GAME_SIMULATION_FIXED_TIMESTEP;
 
-            if (context.animation.time >= GAME_ANIMATION_FIXED_TIMESTEP) {
-                context.animation.time -= GAME_ANIMATION_FIXED_TIMESTEP;
+            while (context.animation.accumulator >= GAME_ANIMATION_FIXED_TIMESTEP) {
+                context.animation.accumulator -= GAME_ANIMATION_FIXED_TIMESTEP;
 
                 context.player.sprites[context.player.action].offset.x = (context.player.sprites[context.player.action].scale.x * context.player.animation.tick);
                 if (context.player.animation.lock != 2 && context.player.animation.tick < context.player.animation.step) context.player.animation.tick++;
