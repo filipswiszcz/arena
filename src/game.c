@@ -87,6 +87,10 @@ void shader_set_int(shader_t *shader, char *name, int val) {
     glUniform1i(glGetUniformLocation(shader->program, name), val);
 }
 
+void shader_set_uint(shader_t *shader, char *name, unsigned int val) {
+    glUniform1ui(glGetUniformLocation(shader->program, name), val);
+}
+
 void shader_set_float(shader_t *shader, char *name, float val) {
     glUniform1f(glGetUniformLocation(shader->program, name), val);
 }
@@ -147,28 +151,39 @@ void texture_bind(texture_t *texture) {
 
 typedef struct {
     texture_t *texture;
-    vec2_t position, size;
-    float rotation;
+    vec2_t pos, size;
+    float rot;
     vec2_t scale, offset;
     vec3_t color;
+    uint32_t zorder;
 } sprite_t;
 
-void sprite_init(sprite_t *sprite, texture_t *texture, vec2_t position, vec2_t size, float rotation, vec2_t scale, vec2_t offset, vec3_t color) {
+void sprite_init(sprite_t *sprite, texture_t *texture, vec2_t pos, vec2_t size, float rot, vec2_t scale, vec2_t offset, vec3_t color, uint32_t zorder) {
     sprite->texture = texture;
-    sprite->position = position;
+    sprite->pos = pos;
     sprite->size = size;
-    sprite->rotation = rotation;
+    sprite->rot = rot;
     sprite->scale = scale;
     sprite->offset = offset;
     sprite->color = color;
+    sprite->zorder = zorder;
 }
 
 // RENDERER
 
 typedef struct renderer {
-    // a queue of things to render?
+    // static array arena
+    // dynamic array arena
+    
     shader_t *shader;
     uint32_t vao, vbo;
+
+    struct {
+        shader_t *shader;
+        texture_t texture;
+        uint32_t fbo;
+    } postproc; // rename
+
 } renderer_t;
 
 void renderer_init(renderer_t *renderer, shader_t *shader) {
@@ -198,7 +213,29 @@ void renderer_init(renderer_t *renderer, shader_t *shader) {
 
     glBindBuffer(GL_ARRAY_BUFFER, 0);
     glBindVertexArray(0);
+
+    // post-processing
+    glGenFramebuffers(1, &renderer->postproc.fbo);
+    glBindFramebuffer(GL_FRAMEBUFFER, renderer->postproc.fbo);
+
+    glGenTextures(1, &renderer->postproc.texture.id);
+    glBindTexture(GL_TEXTURE_2D, renderer->postproc.texture.id);
+
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, WINDOW_WIDTH, WINDOW_HEIGHT, 0, GL_RGB, GL_UNSIGNED_BYTE, NULL); // TODO append that data to texture_t;
+
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+
+    glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, renderer->postproc.texture.id, 0);
+
+    if (glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE) { // TODO swap to ASSERT
+        printf("FRAMEBUFFER_INIT_ERROR\n");
+    }
+
+    glBindFramebuffer(GL_FRAMEBUFFER, 0);
 }
+
+void _renderer_draw(renderer_t *renderer) {}
 
 void renderer_draw(renderer_t *renderer, texture_t *texture, vec2_t position, vec2_t size, vec2_t scale, vec2_t offset, uint8_t mirror, float time) {
     shader_use(renderer->shader);
@@ -231,12 +268,13 @@ void renderer_draw(renderer_t *renderer, texture_t *texture, vec2_t position, ve
 // GAME
 
 typedef struct {
-    vec2_t min, max; // offsets to global pos
+    vec2_t min, max; // offsets to parent pos
     vec2_t velocity;
     uint8_t lock, impact;
 } collision_box_t;
 
-// until there is a collision, velocity should be constantly (-ffs, 0?);
+// TODO make collision detection better
+    // until there is a south collision, velocity should be constantly (-ffs, 0?);
     // ffs = free fall speed, 0? = it should always strive to reach a verticall fall
 
 uint8_t collision_box_intersection(collision_box_t *a, collision_box_t *b) {
@@ -282,6 +320,10 @@ typedef struct {
     uint8_t mirror;
     uint8_t fire; // it manages hand and gun | when 1, then hand and gun are going vert (animation)
 } actor_t;
+
+void actor_move(actor_t *actor) {}
+
+void actor_fire(actor_t *actor) {}
 
 typedef struct {
     vec2_t position;
@@ -352,6 +394,8 @@ static struct {
 
     } ticker;
 
+    // struct {} metrics;
+
     mem_arena_t arena;
 
     struct {
@@ -364,7 +408,7 @@ static struct {
     struct {
         game_state_t state;
 
-        struct { // TODO add z-index to sprite_t
+        struct {
             sprite_t background;
             
             // temp
@@ -387,11 +431,11 @@ static struct {
 
 } context;
 
-void _game_win32_icon_init(void) {    
-    char *filepath = "assets/icon.png";
+void _game_win32_icon_init(void) {
+    char *path = "assets/icon.png";
     int32_t width, height, channels;
-    unsigned char *pixels = stbi_load(filepath, &width, &height, &channels, 0);
-    ASSERT(pixels, "ICON_READ_ERROR: %s", filepath);
+    unsigned char *pixels = stbi_load(path, &width, &height, &channels, 0);
+    ASSERT(pixels, "ICON_READ_ERROR: %s", path);
 
     GLFWimage images[1] = {(GLFWimage) {.width = width, .height = height, .pixels = pixels}};
     glfwSetWindowIcon(context.platform.window, 1, images);
@@ -401,15 +445,12 @@ void _game_win32_icon_init(void) {
 
 void _game_keyboard_callback(GLFWwindow *window, int32_t key, int32_t scan, int32_t action, int32_t mode) {
     if (key > -1 && key < 512) {
-        if (action == GLFW_PRESS) {  
-            context.platform.keys[key] = 1;
-        } else if (action == GLFW_RELEASE) {
-            context.platform.keys[key] = 0;
-        }
+        if (action == GLFW_PRESS) context.platform.keys[key] = 1;
+        else if (action == GLFW_RELEASE) context.platform.keys[key] = 0;
     }
 }
 
-void _game_keyboard_handle_f(void) {
+void _game_keyboard_handle(void) {
     if (context.game.state != GAME_STATE_PLAY) return;
     
     if (context.platform.keys[GLFW_KEY_ESCAPE]) {glfwSetWindowShouldClose(context.platform.window, 1);}
@@ -641,8 +682,9 @@ void game_init(void) {
     mem_arena_init(&context.arena, &GAME_MEMORY, GAME_MEMORY_CAPACITY);
 
     // RESOURCES
-    context.resources.shaders = mem_arena_alloc(&context.arena, 4 * sizeof(shader_t));
+    context.resources.shaders = mem_arena_alloc(&context.arena, 2 * sizeof(shader_t));
     shader_init(&context.resources.shaders[0], "shader/sprite.vs", "shader/sprite.fs");
+    shader_init(&context.resources.shaders[1], "shader/crt.vs", "shader/crt.fs");
     // crt shader?
 
     context.resources.textures = mem_arena_alloc(&context.arena, 8 * sizeof(texture_t));
@@ -656,6 +698,8 @@ void game_init(void) {
 
     // RENDERER
     renderer_init(&context.renderer, &context.resources.shaders[0]);
+    context.renderer.postproc.shader = &context.resources.shaders[1];
+    // renderer_init(&context.renderer, &context.resources.shaders[0]);
 
     mat4_t projection = mat4_ortho(0.0f, (float) WINDOW_WIDTH, (float) WINDOW_HEIGHT, 0.0f, -1.0f, 1.0f);
 
@@ -669,7 +713,7 @@ void game_init(void) {
     // level
     context.game.level.box = (collision_box_t) {.min = vec2(0.0f, 0.0f), .max = vec2(800.0f, 50.0f), .velocity = vec2(0.0f, 0.0f), .lock = 0, .impact = 1};
 
-    sprite_init(&context.game.level.floor, &context.resources.textures[0], vec2(0.0f, 0.0f), vec2(800.0f, 50.0f), 0.0f, vec2(1.0f, 1.0f), vec2(0.0f, 0.0f), vec3(1.0f, 1.0f, 1.0f));
+    sprite_init(&context.game.level.floor, &context.resources.textures[0], vec2(0.0f, 0.0f), vec2(800.0f, 50.0f), 0.0f, vec2(1.0f, 1.0f), vec2(0.0f, 0.0f), vec3(1.0f, 1.0f, 1.0f), 0);
 
     // actor
     context.game.player.position = vec2(150.0f, 100.0f);
@@ -680,13 +724,13 @@ void game_init(void) {
     context.game.player.mirror = 0;
     context.game.player.fire = 0;
 
-    sprite_init(&context.game.player.sprites[0], &context.resources.textures[1], vec2(0.0f, 0.0f), vec2(192.0f, 192.0f), 0.0f, vec2(0.25f, 1.0f), vec2(0.25f, 0.0f), vec3(1.0f, 1.0f, 1.0f)); // idle
-    sprite_init(&context.game.player.sprites[1], &context.resources.textures[2], vec2(0.0f, 0.0f), vec2(192.0f, 192.0f), 0.0f, vec2(0.25f, 1.0f), vec2(0.25f, 0.0f), vec3(1.0f, 1.0f, 1.0f)); // jump
-    sprite_init(&context.game.player.sprites[2], &context.resources.textures[3], vec2(0.0f, 0.0f), vec2(192.0f, 192.0f), 0.0f, vec2(0.167f, 1.0f), vec2(0.167f, 0.0f), vec3(1.0f, 1.0f, 1.0f)); // run
-    sprite_init(&context.game.player.sprites[3], &context.resources.textures[4], vec2(0.0f, 0.0f), vec2(192.0f, 192.0f), 0.0f, vec2(0.25f, 1.0f), vec2(0.25f, 0.0f), vec3(1.0f, 1.0f, 1.0f)); // crouch
+    sprite_init(&context.game.player.sprites[0], &context.resources.textures[1], vec2(0.0f, 0.0f), vec2(192.0f, 192.0f), 0.0f, vec2(0.25f, 1.0f), vec2(0.25f, 0.0f), vec3(1.0f, 1.0f, 1.0f), 0); // idle
+    sprite_init(&context.game.player.sprites[1], &context.resources.textures[2], vec2(0.0f, 0.0f), vec2(192.0f, 192.0f), 0.0f, vec2(0.25f, 1.0f), vec2(0.25f, 0.0f), vec3(1.0f, 1.0f, 1.0f), 0); // jump
+    sprite_init(&context.game.player.sprites[2], &context.resources.textures[3], vec2(0.0f, 0.0f), vec2(192.0f, 192.0f), 0.0f, vec2(0.167f, 1.0f), vec2(0.167f, 0.0f), vec3(1.0f, 1.0f, 1.0f), 0); // run
+    sprite_init(&context.game.player.sprites[3], &context.resources.textures[4], vec2(0.0f, 0.0f), vec2(192.0f, 192.0f), 0.0f, vec2(0.25f, 1.0f), vec2(0.25f, 0.0f), vec3(1.0f, 1.0f, 1.0f), 0); // crouch
 
     // bullet
-    sprite_init(&context.game.player.sprites[4], &context.resources.textures[5], vec2(0.0f, 0.0f), vec2(24.0f, 16.0f), 0.0f, vec2(1.0f, 1.0f), vec2(0.0f, 0.0f), vec3(1.0f, 1.0f, 1.0f)); // projectile
+    sprite_init(&context.game.player.sprites[4], &context.resources.textures[5], vec2(0.0f, 0.0f), vec2(24.0f, 16.0f), 0.0f, vec2(1.0f, 1.0f), vec2(0.0f, 0.0f), vec3(1.0f, 1.0f, 1.0f), 0); // projectile
 
     // TICKER
     context.ticker.time_of_last_frame = glfwGetTime();
@@ -694,9 +738,6 @@ void game_init(void) {
 
 void game_update(void) {
     while (!glfwWindowShouldClose(context.platform.window)) {
-
-        // OPENGL 
-        glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
         // TICKER
         double current_time = glfwGetTime();
@@ -727,7 +768,7 @@ void game_update(void) {
             // TODO save previous actors states
 
             // input
-            _game_keyboard_handle_f();
+            _game_keyboard_handle();
 
             // animation
             context.ticker.animation.accumulator += GAME_SIMULATION_FIXED_TIMESTEP;
@@ -747,14 +788,35 @@ void game_update(void) {
         // double alpha = context.clock.accumulator / GAME_SIMULATION_FIXED_TIMESTEP;
 
         // RENDERER
-        renderer_draw(&context.renderer, context.game.level.floor.texture, context.game.level.floor.position, context.game.level.floor.size, context.game.level.floor.scale, context.game.level.floor.offset, 0, current_time);
-        // printf("pos={x=%f, y=%f}\n", context.game.level.floor.position.x, context.game.level.floor.position.y);
+        glBindFramebuffer(GL_FRAMEBUFFER, context.renderer.postproc.fbo);
+        glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
+        glClear(GL_COLOR_BUFFER_BIT);
 
-        renderer_draw(&context.renderer, context.game.player.sprites[context.game.player.action].texture, vec2_add(context.game.player.position, context.game.player.sprites[context.game.player.action].position), context.game.player.sprites[context.game.player.action].size, context.game.player.sprites[context.game.player.action].scale, context.game.player.sprites[context.game.player.action].offset, context.game.player.mirror, current_time);
+        renderer_draw(&context.renderer, context.game.level.floor.texture, context.game.level.floor.pos, context.game.level.floor.size, context.game.level.floor.scale, context.game.level.floor.offset, 0, current_time);
+        renderer_draw(&context.renderer, context.game.player.sprites[context.game.player.action].texture, vec2_add(context.game.player.position, context.game.player.sprites[context.game.player.action].pos), context.game.player.sprites[context.game.player.action].size, context.game.player.sprites[context.game.player.action].scale, context.game.player.sprites[context.game.player.action].offset, context.game.player.mirror, current_time);
 
         for (uint32_t i = 0; i < context.game.level.counter; i++) {
-            renderer_draw(&context.renderer, context.game.level.bullets[i].sprite.texture, vec2_add(context.game.level.bullets[i].position, context.game.level.bullets[i].sprite.position), context.game.level.bullets[i].sprite.size, context.game.level.bullets[i].sprite.scale, context.game.level.bullets[i].sprite.offset, context.game.level.bullets[i].mirror, current_time);
+            renderer_draw(&context.renderer, context.game.level.bullets[i].sprite.texture, vec2_add(context.game.level.bullets[i].position, context.game.level.bullets[i].sprite.pos), context.game.level.bullets[i].sprite.size, context.game.level.bullets[i].sprite.scale, context.game.level.bullets[i].sprite.offset, context.game.level.bullets[i].mirror, current_time);
         }
+
+        glBindFramebuffer(GL_FRAMEBUFFER, 0);
+        glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
+        glClear(GL_COLOR_BUFFER_BIT);
+
+        shader_use(context.renderer.postproc.shader);
+
+        glActiveTexture(GL_TEXTURE0);
+        texture_bind(&context.renderer.postproc.texture);
+
+        shader_set_int(context.renderer.postproc.shader, "u_Texture", 0);
+
+        shader_set_uint(context.renderer.postproc.shader, "u_Lines", WINDOW_HEIGHT);
+        shader_set_float(context.renderer.postproc.shader, "u_Bleed", 0.002f);
+        shader_set_float(context.renderer.postproc.shader, "u_Vignette", 0.8f);
+
+        glBindVertexArray(context.renderer.vao);
+        glDrawArrays(GL_TRIANGLES, 0, 6);
+        glBindVertexArray(0);
 
         // OPENGL
         glfwSwapBuffers(context.platform.window);
