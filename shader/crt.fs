@@ -15,7 +15,7 @@ void main() {
     float G = texture(u_Texture, t_Uv).g;
     float B = texture(u_Texture, t_Uv - vec2(u_Bleed, 0.0f)).b;
 
-    float c_Scanline = (sin(t_Uv.y * u_Lines) * 0.15f) + 0.85f; 
+    float c_Scanline = (sin(t_Uv.y * u_Lines) * 0.15f) + 0.85f;
     vec3 c_Color = vec3(R * c_Scanline, G * c_Scanline, B * c_Scanline);
 
     float c_Vignette = smoothstep(0.8f, 0.3f, distance(t_Uv, vec2(0.5f, 0.5f))); 
