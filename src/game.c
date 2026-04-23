@@ -147,6 +147,227 @@ void texture_bind(texture_t *texture) {
     glBindTexture(GL_TEXTURE_2D, texture->id);
 }
 
+// TEXT
+
+#define FONT_WIDTH 6
+#define FONT_HEIGHT 6
+
+static char GLYPHS[128][FONT_WIDTH][FONT_HEIGHT] = {
+    ['F'] = {
+        {1, 1, 1, 1, 0},
+        {1, 0, 0, 0, 0},
+        {1, 0, 0, 0, 0},
+        {1, 1, 1, 0, 0},
+        {1, 0, 0, 0, 0},
+        {1, 0, 0, 0, 0},
+    },
+    ['P'] = {
+        {1, 1, 1, 0, 0},
+        {1, 0, 0, 1, 0},
+        {1, 0, 0, 1, 0},
+        {1, 1, 1, 0, 0},
+        {1, 0, 0, 0, 0},
+        {1, 0, 0, 0, 0},
+    },
+    ['S'] = {
+        {0, 1, 1, 1, 0},
+        {1, 0, 0, 0, 0},
+        {1, 0, 0, 0, 0},
+        {0, 1, 1, 1, 0},
+        {0, 0, 0, 0, 1},
+        {1, 1, 1, 1, 0},
+    },
+    ['0'] = {
+        {0, 1, 1, 0, 0},
+        {1, 0, 0, 1, 0},
+        {1, 0, 0, 1, 0},
+        {1, 0, 0, 1, 0},
+        {1, 0, 0, 1, 0},
+        {0, 1, 1, 0, 0},
+    },
+    ['1'] = {
+        {0, 0, 1, 0, 0},
+        {0, 1, 1, 0, 0},
+        {0, 0, 1, 0, 0},
+        {0, 0, 1, 0, 0},
+        {0, 0, 1, 0, 0},
+        {0, 1, 1, 1, 0},
+    },
+    ['2'] = {
+        {0, 1, 1, 0, 0},
+        {1, 0, 0, 1, 0},
+        {0, 0, 0, 1, 0},
+        {0, 1, 1, 0, 0},
+        {1, 0, 0, 0, 0},
+        {1, 1, 1, 1, 0},
+    },
+    ['3'] = {
+        {0, 1, 1, 0, 0},
+        {1, 0, 0, 1, 0},
+        {0, 0, 1, 0, 0},
+        {0, 0, 0, 1, 0},
+        {1, 0, 0, 1, 0},
+        {0, 1, 1, 0, 0},
+    },
+    ['4'] = {
+        {0, 0, 1, 1, 0},
+        {0, 1, 0, 1, 0},
+        {1, 0, 0, 1, 0},
+        {1, 1, 1, 1, 1},
+        {0, 0, 0, 1, 0},
+        {0, 0, 0, 1, 0},
+    },
+    ['5'] = {
+        {1, 1, 1, 0, 0},
+        {1, 0, 0, 0, 0},
+        {1, 1, 1, 0, 0},
+        {0, 0, 0, 1, 0},
+        {1, 0, 0, 1, 0},
+        {0, 1, 1, 0, 0},
+    },
+    ['6'] = {
+        {0, 1, 1, 0, 0},
+        {1, 0, 0, 0, 0},
+        {1, 1, 1, 0, 0},
+        {1, 0, 0, 1, 0},
+        {1, 0, 0, 1, 0},
+        {0, 1, 1, 0, 0},
+    },
+    ['7'] = {
+        {1, 1, 1, 1, 0},
+        {0, 0, 0, 1, 0},
+        {0, 0, 1, 0, 0},
+        {0, 1, 0, 0, 0},
+        {0, 1, 0, 0, 0},
+        {0, 1, 0, 0, 0},
+    },
+    ['8'] = {
+        {0, 1, 1, 0, 0},
+        {1, 0, 0, 1, 0},
+        {0, 1, 1, 0, 0},
+        {1, 0, 0, 1, 0},
+        {1, 0, 0, 1, 0},
+        {0, 1, 1, 0, 0},
+
+    },
+    ['9'] = {
+        {0, 1, 1, 0, 0},
+        {1, 0, 0, 1, 0},
+        {1, 0, 0, 1, 0},
+        {0, 1, 1, 1, 0},
+        {0, 0, 0, 1, 0},
+        {0, 1, 1, 0, 0},
+    },
+    [':'] = {
+        {0, 0, 0, 0, 0},
+        {0, 0, 0, 0, 0},
+        {0, 0, 1, 0, 0},
+        {0, 0, 0, 0, 0},
+        {0, 0, 0, 0, 0},
+        {0, 0, 1, 0, 0},
+    }
+};
+
+typedef struct {
+    shader_t *shader;
+    texture_t texture;
+    uint32_t vao, vbo;
+} text_t;
+
+void text_init(text_t *text) {
+    uint8_t bitmap[(FONT_WIDTH * 16) * (FONT_HEIGHT * 8)];
+    memset(bitmap, 0, sizeof(bitmap));
+    
+    for (uint32_t i = 0; i < 128; i++) {
+        uint32_t cpx = (i % 16) * FONT_WIDTH;
+        uint32_t cpy = (i / 16) * FONT_HEIGHT;
+        
+        for (uint32_t j = 0; j < FONT_HEIGHT; j++) {
+            for (uint32_t k = 0; k < FONT_WIDTH; k++) {
+                if (GLYPHS[i][j][k]) {
+                    uint32_t px = cpx + k;
+                    uint32_t py = cpy + j;
+                    uint32_t mrk = (py * (FONT_WIDTH * 16)) + px;
+                    bitmap[mrk] = 255;
+                }
+            }
+        }
+    }
+
+    glGenTextures(1, &text->texture.id);
+
+    glBindTexture(GL_TEXTURE_2D, text->texture.id);
+
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+
+    glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RED, (FONT_WIDTH * 16), (FONT_HEIGHT * 8), 0, GL_RED, GL_UNSIGNED_BYTE, bitmap);
+
+    glGenVertexArrays(1, &text->vao);
+    glGenBuffers(1, &text->vbo);
+
+    glBindVertexArray(text->vao);
+
+    glBindBuffer(GL_ARRAY_BUFFER, text->vbo);
+    glBufferData(GL_ARRAY_BUFFER, 256 * 6 * 4 * sizeof(float), NULL, GL_DYNAMIC_DRAW);
+
+    glEnableVertexAttribArray(0);
+    glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, sizeof(vec4_t), (void*) 0);
+
+    glEnableVertexAttribArray(1);
+    glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, sizeof(vec4_t), (void*) (sizeof(vec2_t)));
+
+    glBindBuffer(GL_ARRAY_BUFFER, 0);
+    glBindVertexArray(0);
+}
+
+void text_draw(text_t *text, char *content, float x, float y, float scale) {
+#ifdef _WIN32
+    vec4_t vertices[128 * 6];
+#else
+    vec4_t vertices[strlen(content) * 6];
+#endif
+    uint32_t c = 0;
+
+    float cx = x;
+    for (uint32_t i = 0; i < strlen(content); i++) {
+        float col = (float) (content[i] % 16);
+        float row = (float) (content[i] / 16);
+
+        float umin = col / 16.0f;
+        float vmin = row / 8.0f;
+        float umax = (col + 1.0f) / 16.0f;
+        float vmax = (row + 1.0f) / 8.0f;
+
+        float sx = cx;
+        float sy = y;
+        float w = FONT_WIDTH * scale;
+        float h = FONT_HEIGHT * scale;
+
+        vertices[c++] = vec4(sx, sy + h, umin, vmin);
+        vertices[c++] = vec4(sx, sy, umin, vmax);
+        vertices[c++] = vec4(sx + w, sy, umax, vmax);
+
+        vertices[c++] = vec4(sx, sy + h, umin, vmin);
+        vertices[c++] = vec4(sx + w, sy, umax, vmax);
+        vertices[c++] = vec4(sx + w, sy + h, umax, vmin);
+
+        cx += w;
+    }
+
+    glBindVertexArray(text->vao);
+    glBindBuffer(GL_ARRAY_BUFFER, text->vbo);
+
+    glActiveTexture(GL_TEXTURE0);
+    glBindTexture(GL_TEXTURE_2D, text->texture.id);
+
+    glBufferSubData(GL_ARRAY_BUFFER, 0, sizeof(vertices), vertices);
+
+    glDrawArrays(GL_TRIANGLES, 0, strlen(content) * 6);
+    glBindVertexArray(0);
+}
+
 // SPRITE
 
 typedef struct {
@@ -172,6 +393,7 @@ void sprite_init(sprite_t *sprite, texture_t *texture, vec2_t pos, vec2_t size, 
 // RENDERER
 
 typedef struct renderer {
+
     // static array arena
     // dynamic array arena
     
@@ -179,10 +401,10 @@ typedef struct renderer {
     uint32_t vao, vbo;
 
     struct {
-        shader_t *shader;
+        shader_t *shader; // it should be a list to be honest
         texture_t texture;
         uint32_t fbo;
-    } postproc; // rename
+    } postprocessing;
 
 } renderer_t;
 
@@ -215,18 +437,18 @@ void renderer_init(renderer_t *renderer, shader_t *shader) {
     glBindVertexArray(0);
 
     // post-processing
-    glGenFramebuffers(1, &renderer->postproc.fbo);
-    glBindFramebuffer(GL_FRAMEBUFFER, renderer->postproc.fbo);
+    glGenFramebuffers(1, &renderer->postprocessing.fbo);
+    glBindFramebuffer(GL_FRAMEBUFFER, renderer->postprocessing.fbo);
 
-    glGenTextures(1, &renderer->postproc.texture.id);
-    glBindTexture(GL_TEXTURE_2D, renderer->postproc.texture.id);
+    glGenTextures(1, &renderer->postprocessing.texture.id);
+    glBindTexture(GL_TEXTURE_2D, renderer->postprocessing.texture.id);
 
     glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, WINDOW_WIDTH, WINDOW_HEIGHT, 0, GL_RGB, GL_UNSIGNED_BYTE, NULL); // TODO append that data to texture_t;
 
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
 
-    glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, renderer->postproc.texture.id, 0);
+    glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, renderer->postprocessing.texture.id, 0);
 
     if (glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE) { // TODO swap to ASSERT
         printf("FRAMEBUFFER_INIT_ERROR\n");
@@ -388,8 +610,10 @@ static struct {
         } animation;
 
         struct {
+            double value;
             double timer;
             uint32_t counter;
+            text_t text;
         } framerate;
 
     } ticker;
@@ -682,9 +906,10 @@ void game_init(void) {
     mem_arena_init(&context.arena, &GAME_MEMORY, GAME_MEMORY_CAPACITY);
 
     // RESOURCES
-    context.resources.shaders = mem_arena_alloc(&context.arena, 2 * sizeof(shader_t));
+    context.resources.shaders = mem_arena_alloc(&context.arena, 4 * sizeof(shader_t));
     shader_init(&context.resources.shaders[0], "shader/sprite.vs", "shader/sprite.fs");
     shader_init(&context.resources.shaders[1], "shader/crt.vs", "shader/crt.fs");
+    shader_init(&context.resources.shaders[2], "shader/text.vs", "shader/text.fs");
     // crt shader?
 
     context.resources.textures = mem_arena_alloc(&context.arena, 8 * sizeof(texture_t));
@@ -696,9 +921,13 @@ void game_init(void) {
     texture_init(&context.resources.textures[5], "assets/texture/projectile.png");
     //..
 
+    // TICKER
+    text_init(&context.ticker.framerate.text);
+    context.ticker.framerate.text.shader = &context.resources.shaders[2];
+
     // RENDERER
     renderer_init(&context.renderer, &context.resources.shaders[0]);
-    context.renderer.postproc.shader = &context.resources.shaders[1];
+    context.renderer.postprocessing.shader = &context.resources.shaders[1];
     // renderer_init(&context.renderer, &context.resources.shaders[0]);
 
     mat4_t projection = mat4_ortho(0.0f, (float) WINDOW_WIDTH, (float) WINDOW_HEIGHT, 0.0f, -1.0f, 1.0f);
@@ -749,9 +978,10 @@ void game_update(void) {
         context.ticker.framerate.counter++;
 
         if (context.ticker.framerate.timer >= 1.0f) { // TODO draw it in UI
-            char title[64];
-            sprintf(title, "%s [%.0f FPS]", WINDOW_NAME, (double) context.ticker.framerate.counter / context.ticker.framerate.timer);
-            glfwSetWindowTitle(context.platform.window, title);
+            // char title[64];
+            // sprintf(title, "%s [%.0f FPS]", WINDOW_NAME, (double) context.ticker.framerate.counter / context.ticker.framerate.timer);
+            // glfwSetWindowTitle(context.platform.window, title);
+            context.ticker.framerate.value = (double) context.ticker.framerate.counter / context.ticker.framerate.timer;
             context.ticker.framerate.timer -= 1.0;
             context.ticker.framerate.counter = 0;
         }
@@ -788,7 +1018,7 @@ void game_update(void) {
         // double alpha = context.clock.accumulator / GAME_SIMULATION_FIXED_TIMESTEP;
 
         // RENDERER
-        glBindFramebuffer(GL_FRAMEBUFFER, context.renderer.postproc.fbo);
+        glBindFramebuffer(GL_FRAMEBUFFER, context.renderer.postprocessing.fbo);
         glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
         glClear(GL_COLOR_BUFFER_BIT);
 
@@ -803,20 +1033,33 @@ void game_update(void) {
         glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
         glClear(GL_COLOR_BUFFER_BIT);
 
-        shader_use(context.renderer.postproc.shader);
+        shader_use(context.renderer.postprocessing.shader);
 
         glActiveTexture(GL_TEXTURE0);
-        texture_bind(&context.renderer.postproc.texture);
+        texture_bind(&context.renderer.postprocessing.texture);
 
-        shader_set_int(context.renderer.postproc.shader, "u_Texture", 0);
+        shader_set_int(context.renderer.postprocessing.shader, "u_Texture", 0);
 
-        shader_set_uint(context.renderer.postproc.shader, "u_Lines", WINDOW_HEIGHT);
-        shader_set_float(context.renderer.postproc.shader, "u_Bleed", 0.002f);
-        shader_set_float(context.renderer.postproc.shader, "u_Vignette", 0.8f);
+        shader_set_uint(context.renderer.postprocessing.shader, "u_Lines", WINDOW_HEIGHT);
+        shader_set_float(context.renderer.postprocessing.shader, "u_Bleed", 0.002f);
+        shader_set_float(context.renderer.postprocessing.shader, "u_Vignette", 0.8f);
 
         glBindVertexArray(context.renderer.vao);
         glDrawArrays(GL_TRIANGLES, 0, 6);
         glBindVertexArray(0);
+
+        // TEXT
+        shader_use(context.ticker.framerate.text.shader);
+
+        mat4_t projection = mat4_ortho(0.0f, (float) WINDOW_WIDTH, (float) WINDOW_HEIGHT, 0.0f, -1.0f, 1.0f);
+
+        shader_set_mat4(context.ticker.framerate.text.shader, "u_Projection", projection);
+        shader_set_int(context.ticker.framerate.text.shader, "u_Texture", 0);
+        shader_set_vec3(context.ticker.framerate.text.shader, "u_Color", vec3(1.0f, 1.0f, 1.0f));
+
+        char title[64];
+        sprintf(title, "FPS %0.f", context.ticker.framerate.value);
+        text_draw(&context.ticker.framerate.text, title, 16.0f, (float) (WINDOW_HEIGHT - 16.0f), 2.0f);
 
         // OPENGL
         glfwSwapBuffers(context.platform.window);
