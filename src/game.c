@@ -19,7 +19,7 @@
 
 #define WINDOW_WIDTH 800
 #define WINDOW_HEIGHT 600
-#define WINDOW_NAME "BattleArena 2D (Build v0.0.13)"
+#define WINDOW_NAME "BattleArena 2D (Build v0.0.14)"
 
 #define ASSERT(_e, ...) if (!(_e)) {fprintf(stderr, __VA_ARGS__); exit(1);}
 
@@ -401,42 +401,45 @@ typedef struct renderer {
     uint32_t vao, vbo;
 
     struct {
+        // temp
+        shader_t *shaders[2]; // crt, glitch
+        texture_t textures[3];
+        uint32_t fbof;
+        // temp end
+
         shader_t *shader; // it should be a list to be honest
         texture_t texture;
         uint32_t fbo;
     } postprocessing;
 
+    text_t *texts;
+
 } renderer_t;
 
-void renderer_init(renderer_t *renderer, shader_t *shader) {
-    renderer->shader = shader;
+void _renderer_postprocess_init_f(renderer_t *renderer) {
+    glGenFramebuffers(1, &renderer->postprocessing.fbof);
+    glBindFramebuffer(GL_FRAMEBUFFER, renderer->postprocessing.fbof);
 
-    vec4_t vertices[] = {
-        vec4(0.0f, 1.0f, 0.0f, 1.0f),
-        vec4(1.0f, 0.0f, 1.0f, 0.0f),
-        vec4(0.0f, 0.0f, 0.0f, 0.0f), 
-        vec4(0.0f, 1.0f, 0.0f, 1.0f),
-        vec4(1.0f, 1.0f, 1.0f, 1.0f),
-        vec4(1.0f, 0.0f, 1.0f, 0.0f)
-    };
-    
-    glGenVertexArrays(1, &renderer->vao);
-    glGenBuffers(1, &renderer->vbo);
+    for (uint32_t i = 0; i < 3; i++) {
+        glGenTextures(1, &renderer->postprocessing.textures[i].id);
+        glBindTexture(GL_TEXTURE_2D, renderer->postprocessing.textures[i].id);
+        
+        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, WINDOW_WIDTH, WINDOW_HEIGHT, 0, GL_RGB, GL_UNSIGNED_BYTE, NULL); // TODO append that data to texture_t;
 
-    glBindVertexArray(renderer->vao);
-    
-    glBindBuffer(GL_ARRAY_BUFFER, renderer->vbo);
-    glBufferData(GL_ARRAY_BUFFER, sizeof(vertices), vertices, GL_STATIC_DRAW);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
 
-    glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, sizeof(vec4_t), (void*) 0);
-    glEnableVertexAttribArray(0);
-    glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, sizeof(vec4_t), (void*) (2 * sizeof(float)));
-    glEnableVertexAttribArray(1);
+        glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, renderer->postprocessing.textures[i].id, 0);
+    }
 
-    glBindBuffer(GL_ARRAY_BUFFER, 0);
-    glBindVertexArray(0);
+    if (glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE) { // TODO swap to ASSERT
+        printf("FRAMEBUFFER_INIT_ERROR\n");
+    }
 
-    // post-processing
+    glBindFramebuffer(GL_FRAMEBUFFER, 0);
+}
+
+void _renderer_postprocess_init(renderer_t *renderer) {
     glGenFramebuffers(1, &renderer->postprocessing.fbo);
     glBindFramebuffer(GL_FRAMEBUFFER, renderer->postprocessing.fbo);
 
@@ -457,7 +460,193 @@ void renderer_init(renderer_t *renderer, shader_t *shader) {
     glBindFramebuffer(GL_FRAMEBUFFER, 0);
 }
 
-void _renderer_draw(renderer_t *renderer) {}
+void renderer_init_f(renderer_t *renderer, shader_t *shaders) {
+
+    // SPRITES
+    vec4_t vertices[] = {
+        vec4(0.0f, 1.0f, 0.0f, 1.0f), vec4(1.0f, 0.0f, 1.0f, 0.0f), vec4(0.0f, 0.0f, 0.0f, 0.0f), 
+        vec4(0.0f, 1.0f, 0.0f, 1.0f), vec4(1.0f, 1.0f, 1.0f, 1.0f), vec4(1.0f, 0.0f, 1.0f, 0.0f)
+    };
+    
+    glGenVertexArrays(1, &renderer->vao);
+    glGenBuffers(1, &renderer->vbo);
+
+    glBindVertexArray(renderer->vao);
+    
+    glBindBuffer(GL_ARRAY_BUFFER, renderer->vbo);
+    glBufferData(GL_ARRAY_BUFFER, sizeof(vertices), vertices, GL_STATIC_DRAW);
+
+    glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, sizeof(vec4_t), (void*) 0);
+    glEnableVertexAttribArray(0);
+    glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, sizeof(vec4_t), (void*) (2 * sizeof(float)));
+    glEnableVertexAttribArray(1);
+
+    glBindBuffer(GL_ARRAY_BUFFER, 0);
+    glBindVertexArray(0);
+
+    // POST-PROCESSING
+    _renderer_postprocess_init(renderer);
+
+    // TEXTS
+    // alloc text array
+
+    // SHADERS
+    renderer->shader = &shaders[0]; // sprite
+    renderer->postprocessing.shader = &shaders[1]; // crt
+    // renderer->texts[0].shader = &shaders[2]; // text
+    renderer->postprocessing.shaders[0] = &shaders[1]; // crt
+    renderer->postprocessing.shaders[1] = &shaders[3]; // glitch
+
+    // PROJECTION
+    mat4_t projection = mat4_ortho(0.0f, (float) WINDOW_WIDTH, (float) WINDOW_HEIGHT, 0.0f, -1.0f, 1.0f);
+
+    shader_use(renderer->shader); // sprite
+    shader_set_mat4(renderer->shader, "u_Projection", projection);
+
+    // shader_use(renderer->texts[0].shader); // text
+    // shader_set_mat4(renderer->texts[0].shader, "u_Projection", projection);
+
+    shader_use(&shaders[2]); // text
+    shader_set_mat4(&shaders[2], "u_Projection", projection);
+}
+
+void renderer_init(renderer_t *renderer, shader_t *shaders) {
+
+    // SPRITES
+    vec4_t vertices[] = {
+        vec4(0.0f, 1.0f, 0.0f, 1.0f), vec4(1.0f, 0.0f, 1.0f, 0.0f), vec4(0.0f, 0.0f, 0.0f, 0.0f), 
+        vec4(0.0f, 1.0f, 0.0f, 1.0f), vec4(1.0f, 1.0f, 1.0f, 1.0f), vec4(1.0f, 0.0f, 1.0f, 0.0f)
+    };
+    
+    glGenVertexArrays(1, &renderer->vao);
+    glGenBuffers(1, &renderer->vbo);
+
+    glBindVertexArray(renderer->vao);
+    
+    glBindBuffer(GL_ARRAY_BUFFER, renderer->vbo);
+    glBufferData(GL_ARRAY_BUFFER, sizeof(vertices), vertices, GL_STATIC_DRAW);
+
+    glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, sizeof(vec4_t), (void*) 0);
+    glEnableVertexAttribArray(0);
+    glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, sizeof(vec4_t), (void*) (2 * sizeof(float)));
+    glEnableVertexAttribArray(1);
+
+    glBindBuffer(GL_ARRAY_BUFFER, 0);
+    glBindVertexArray(0);
+
+    // POST-PROCESSING
+    _renderer_postprocess_init(renderer);
+
+    // TEXTS
+    // alloc text array
+
+    // SHADERS
+    renderer->shader = &shaders[0]; // sprite
+    renderer->postprocessing.shader = &shaders[1]; // crt
+    // renderer->texts[0].shader = &shaders[2]; // text
+
+    // PROJECTION
+    mat4_t projection = mat4_ortho(0.0f, (float) WINDOW_WIDTH, (float) WINDOW_HEIGHT, 0.0f, -1.0f, 1.0f);
+
+    shader_use(renderer->shader); // sprite
+    shader_set_mat4(renderer->shader, "u_Projection", projection);
+
+    // shader_use(renderer->texts[0].shader); // text
+    // shader_set_mat4(renderer->texts[0].shader, "u_Projection", projection);
+
+    shader_use(&shaders[2]); // text
+    shader_set_mat4(&shaders[2], "u_Projection", projection);
+
+}
+
+void _renderer_sprite_draw(renderer_t *renderer) {}
+
+void _renderer_postprocess_draw(renderer_t *renderer) {
+    glBindFramebuffer(GL_FRAMEBUFFER, 0); 
+    glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
+    glClear(GL_COLOR_BUFFER_BIT);
+
+    uint32_t mrk = 0;
+    for (uint32_t i = 0; i < 2; i++) {
+        glActiveTexture(GL_TEXTURE0);
+        texture_bind(&renderer->postprocessing.textures[mrk]);
+
+        shader_use(renderer->postprocessing.shaders[i]);
+
+        shader_set_int(renderer->postprocessing.shaders[i], "u_Texture", 0);
+
+        // here set uniforms for specific shader
+
+        glBindVertexArray(renderer->vao);
+        glDrawArrays(GL_TRIANGLES, 0, 6);
+        glBindVertexArray(0);
+
+        mrk = mrk ? 0 : 1;
+    }
+
+    // glBindFramebuffer(GL_FRAMEBUFFER, 0);
+    // glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
+    // glClear(GL_COLOR_BUFFER_BIT);
+
+    // glActiveTexture(GL_TEXTURE0);
+    // texture_bind(&renderer->postprocessing.texture);
+
+
+    // shader_use(renderer->postprocessing.shader);
+
+    // shader_set_int(renderer->postprocessing.shader, "u_Texture", 0);
+
+    // shader_set_uint(renderer->postprocessing.shader, "u_Lines", WINDOW_HEIGHT);
+    // shader_set_float(renderer->postprocessing.shader, "u_Bleed", 0.002f);
+    // shader_set_float(renderer->postprocessing.shader, "u_Vignette", 0.8f);
+
+    // glBindVertexArray(renderer->vao);
+    // glDrawArrays(GL_TRIANGLES, 0, 6);
+    // glBindVertexArray(0);
+}
+
+void renderer_draw_f(renderer_t *renderer) {
+
+    glBindFramebuffer(GL_FRAMEBUFFER, renderer->postprocessing.fbo);
+    glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
+    glClear(GL_COLOR_BUFFER_BIT);
+
+    // pass 1
+        // use sprite shader
+        // for each sprite
+            // trans, rot, scale mat4 model
+            // set sprite shader uniforms
+            // bind sprite texture
+            // draw
+
+    // pass 2
+        // for each postprocess shader
+            // use current loop shader
+            // set current loop shader uniforms
+            // bind A or B texture
+            // draw
+
+    uint32_t mrk = 0;
+    for (uint32_t i = 0; i < 2; i++) {
+        if (i == 1) {
+            glBindFramebuffer(GL_FRAMEBUFFER, 0);
+            glClear(GL_COLOR_BUFFER_BIT);
+        }
+
+        shader_use(renderer->postprocessing.shaders[i]);
+
+        // here set uniforms for specific shader
+
+        glBindVertexArray(renderer->vao);
+        glDrawArrays(GL_TRIANGLES, 0, 6);
+        glBindVertexArray(0);
+
+        mrk = mrk ? 0 : 1;
+    }
+
+    // switch to framebuffer 0
+    // swap buffers?
+}
 
 void renderer_draw(renderer_t *renderer, texture_t *texture, vec2_t position, vec2_t size, vec2_t scale, vec2_t offset, uint8_t mirror, float time) {
     shader_use(renderer->shader);
@@ -555,12 +744,6 @@ typedef struct {
     uint8_t source, mirror;
 } bullet_t;
 
-typedef struct {
-    // sprites
-    // array/queue with bullets (bullet updates pos until hits smth or flies outside of the arena)
-    uint16_t turn;
-} level_t;
-
 // what i need:
 // - a list with all textures (mem arena)
 //      - do i run through assets/ and load them all?
@@ -593,7 +776,6 @@ static struct {
 
     struct {
         GLFWwindow *window;
-        uint32_t width, height;
         int32_t keys[512];
     } platform;
 
@@ -645,6 +827,9 @@ static struct {
             collision_box_t box;
             bullet_t bullets[16];
             uint32_t counter;
+            // sprites
+            // array/queue with bullets (bullet updates pos until hits smth or flies outside of the arena)
+            uint16_t turn;
             // end of temp
 
         } level;
@@ -910,7 +1095,6 @@ void game_init(void) {
     shader_init(&context.resources.shaders[0], "shader/sprite.vs", "shader/sprite.fs");
     shader_init(&context.resources.shaders[1], "shader/crt.vs", "shader/crt.fs");
     shader_init(&context.resources.shaders[2], "shader/text.vs", "shader/text.fs");
-    // crt shader?
 
     context.resources.textures = mem_arena_alloc(&context.arena, 8 * sizeof(texture_t));
     texture_init(&context.resources.textures[0], "assets/texture/level/floor.jpg");
@@ -921,20 +1105,8 @@ void game_init(void) {
     texture_init(&context.resources.textures[5], "assets/texture/projectile.png");
     //..
 
-    // TICKER
-    text_init(&context.ticker.framerate.text);
-    context.ticker.framerate.text.shader = &context.resources.shaders[2];
-
     // RENDERER
-    renderer_init(&context.renderer, &context.resources.shaders[0]);
-    context.renderer.postprocessing.shader = &context.resources.shaders[1];
-    // renderer_init(&context.renderer, &context.resources.shaders[0]);
-
-    mat4_t projection = mat4_ortho(0.0f, (float) WINDOW_WIDTH, (float) WINDOW_HEIGHT, 0.0f, -1.0f, 1.0f);
-
-    shader_use(context.renderer.shader);
-    shader_set_mat4(context.renderer.shader, "u_Projection", projection);
-    shader_set_int(context.renderer.shader, "u_Texture", 0);
+    renderer_init(&context.renderer, context.resources.shaders);
 
     // GAME
     context.game.state = GAME_STATE_PLAY;
@@ -962,7 +1134,9 @@ void game_init(void) {
     sprite_init(&context.game.player.sprites[4], &context.resources.textures[5], vec2(0.0f, 0.0f), vec2(24.0f, 16.0f), 0.0f, vec2(1.0f, 1.0f), vec2(0.0f, 0.0f), vec3(1.0f, 1.0f, 1.0f), 0); // projectile
 
     // TICKER
+    text_init(&context.ticker.framerate.text);
     context.ticker.time_of_last_frame = glfwGetTime();
+    context.ticker.framerate.text.shader = &context.resources.shaders[2]; // text
 }
 
 void game_update(void) {
@@ -1029,14 +1203,27 @@ void game_update(void) {
             renderer_draw(&context.renderer, context.game.level.bullets[i].sprite.texture, vec2_add(context.game.level.bullets[i].position, context.game.level.bullets[i].sprite.pos), context.game.level.bullets[i].sprite.size, context.game.level.bullets[i].sprite.scale, context.game.level.bullets[i].sprite.offset, context.game.level.bullets[i].mirror, current_time);
         }
 
+        // text
+        // if i want t o apply shaders to text as well
+        // shader_use(context.ticker.framerate.text.shader);
+        // shader_set_int(context.ticker.framerate.text.shader, "u_Texture", 0);
+        // shader_set_vec3(context.ticker.framerate.text.shader, "u_Color", vec3(1.0f, 1.0f, 1.0f));
+ 
+        // char title[64];
+        // sprintf(title, "FPS: %0.f", context.ticker.framerate.value);
+        // text_draw(&context.ticker.framerate.text, title, 16.0f, (float) (WINDOW_HEIGHT - 16.0f), 2.0f);
+        // end of text
+
         glBindFramebuffer(GL_FRAMEBUFFER, 0);
         glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
         glClear(GL_COLOR_BUFFER_BIT);
 
-        shader_use(context.renderer.postprocessing.shader);
+        // shader_use(context.renderer.postprocessing.shader);
 
         glActiveTexture(GL_TEXTURE0);
         texture_bind(&context.renderer.postprocessing.texture);
+
+        shader_use(context.renderer.postprocessing.shader);
 
         shader_set_int(context.renderer.postprocessing.shader, "u_Texture", 0);
 
@@ -1050,15 +1237,11 @@ void game_update(void) {
 
         // TEXT
         shader_use(context.ticker.framerate.text.shader);
-
-        mat4_t projection = mat4_ortho(0.0f, (float) WINDOW_WIDTH, (float) WINDOW_HEIGHT, 0.0f, -1.0f, 1.0f);
-
-        shader_set_mat4(context.ticker.framerate.text.shader, "u_Projection", projection);
         shader_set_int(context.ticker.framerate.text.shader, "u_Texture", 0);
         shader_set_vec3(context.ticker.framerate.text.shader, "u_Color", vec3(1.0f, 1.0f, 1.0f));
 
         char title[64];
-        sprintf(title, "FPS %0.f", context.ticker.framerate.value);
+        sprintf(title, "FPS: %0.f", context.ticker.framerate.value);
         text_draw(&context.ticker.framerate.text, title, 16.0f, (float) (WINDOW_HEIGHT - 16.0f), 2.0f);
 
         // OPENGL
