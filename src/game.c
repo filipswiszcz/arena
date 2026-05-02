@@ -2,6 +2,8 @@
 #include <stdio.h>
 #include <stdlib.h>
 
+#include <time.h>
+
 #include <libmath/math.h>
 #include <libmem/mem.h>
 
@@ -22,6 +24,14 @@
 #define WINDOW_NAME "BattleArena 2D (Build v0.0.14)"
 
 #define ASSERT(_e, ...) if (!(_e)) {fprintf(stderr, __VA_ARGS__); exit(1);}
+
+// UTIL
+
+float random(void) {
+    static uint8_t init = 0;
+    if (!init) {srand((unsigned) time(NULL)); init = 1;}
+    return (float) rand() / ((float) RAND_MAX + 1.0f);
+}
 
 // SHADER
 
@@ -370,13 +380,43 @@ void text_draw(text_t *text, char *content, float x, float y, float scale) {
 
 // SPRITE
 
+// typedef struct {
+//      char **name;
+
+//     texture_t *texture;
+
+//     struct {
+//         vec2_t scale, offset;
+//     } uv;
+
+//     vec2_t pos, size; // local pos
+//     float rot;
+
+//     vec3_t color;
+
+//     uint8_t zorder;
+//     uint8_t mirror;
+// } sprite_t;
+
+// void sprite_init(sprite_t *sprite, texture_t *texture, vec2_t scale, vec2_t offset, vec2_t pos, vec2_t size, float rot, vec3_t color, uint8_t zorder, uint8_t mirror) {
+//     sprite->texture = texture;
+//     sprite->uv.scale = scale;
+//     sprite->uv.offset = offset;
+//     sprite->pos = pos;
+//     sprite->size = size;
+//     sprite->rot = rot;
+//     sprite->color = color;
+//     sprite->zorder = zorder;
+//     sprite->mirror = mirror;
+// }
+
 typedef struct {
     texture_t *texture;
     vec2_t pos, size;
     float rot;
     vec2_t scale, offset;
     vec3_t color;
-    uint32_t zorder;
+    uint8_t zorder, mirror;
 } sprite_t;
 
 void sprite_init(sprite_t *sprite, texture_t *texture, vec2_t pos, vec2_t size, float rot, vec2_t scale, vec2_t offset, vec3_t color, uint32_t zorder) {
@@ -388,39 +428,52 @@ void sprite_init(sprite_t *sprite, texture_t *texture, vec2_t pos, vec2_t size, 
     sprite->offset = offset;
     sprite->color = color;
     sprite->zorder = zorder;
+    sprite->mirror = 0;
 }
 
 // RENDERER
 
+typedef struct command {
+    texture_t *texture;
+
+    struct {
+        vec2_t scale, offset;
+    } uv;
+
+    vec2_t pos, size;
+    float rot;
+
+    vec3_t color;
+
+    uint8_t zorder;
+    uint8_t mirror;
+} command_t;
+
 typedef struct renderer {
 
-    // static array arena
-    // dynamic array arena
+    struct {
+        command_t *commands;
+        uint32_t counter;
+    } frame;
     
     shader_t *shader;
     uint32_t vao, vbo;
 
     struct {
-        // temp
         shader_t *shaders[2]; // crt, glitch
-        texture_t textures[3];
-        uint32_t fbof;
-        // temp end
-
-        shader_t *shader; // it should be a list to be honest
-        texture_t texture;
-        uint32_t fbo;
+        texture_t textures[2];
+        uint32_t fbos[2];
     } postprocessing;
 
     text_t *texts;
 
 } renderer_t;
 
-void _renderer_postprocess_init_f(renderer_t *renderer) {
-    glGenFramebuffers(1, &renderer->postprocessing.fbof);
-    glBindFramebuffer(GL_FRAMEBUFFER, renderer->postprocessing.fbof);
+void _renderer_postprocess_init(renderer_t *renderer) {
+    for (uint32_t i = 0; i < 2; i++) {
+        glGenFramebuffers(1, &renderer->postprocessing.fbos[i]);
+        glBindFramebuffer(GL_FRAMEBUFFER, renderer->postprocessing.fbos[i]);
 
-    for (uint32_t i = 0; i < 3; i++) {
         glGenTextures(1, &renderer->postprocessing.textures[i].id);
         glBindTexture(GL_TEXTURE_2D, renderer->postprocessing.textures[i].id);
         
@@ -429,90 +482,27 @@ void _renderer_postprocess_init_f(renderer_t *renderer) {
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
 
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+
         glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, renderer->postprocessing.textures[i].id, 0);
-    }
 
-    if (glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE) { // TODO swap to ASSERT
-        printf("FRAMEBUFFER_INIT_ERROR\n");
-    }
-
-    glBindFramebuffer(GL_FRAMEBUFFER, 0);
-}
-
-void _renderer_postprocess_init(renderer_t *renderer) {
-    glGenFramebuffers(1, &renderer->postprocessing.fbo);
-    glBindFramebuffer(GL_FRAMEBUFFER, renderer->postprocessing.fbo);
-
-    glGenTextures(1, &renderer->postprocessing.texture.id);
-    glBindTexture(GL_TEXTURE_2D, renderer->postprocessing.texture.id);
-
-    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, WINDOW_WIDTH, WINDOW_HEIGHT, 0, GL_RGB, GL_UNSIGNED_BYTE, NULL); // TODO append that data to texture_t;
-
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
-
-    glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, renderer->postprocessing.texture.id, 0);
-
-    if (glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE) { // TODO swap to ASSERT
-        printf("FRAMEBUFFER_INIT_ERROR\n");
+        if (glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE) { // swap to ASSERT?
+            printf("FRAMEBUFFER_INIT_ERROR\n");
+        }
     }
 
     glBindFramebuffer(GL_FRAMEBUFFER, 0);
-}
-
-void renderer_init_f(renderer_t *renderer, shader_t *shaders) {
-
-    // SPRITES
-    vec4_t vertices[] = {
-        vec4(0.0f, 1.0f, 0.0f, 1.0f), vec4(1.0f, 0.0f, 1.0f, 0.0f), vec4(0.0f, 0.0f, 0.0f, 0.0f), 
-        vec4(0.0f, 1.0f, 0.0f, 1.0f), vec4(1.0f, 1.0f, 1.0f, 1.0f), vec4(1.0f, 0.0f, 1.0f, 0.0f)
-    };
-    
-    glGenVertexArrays(1, &renderer->vao);
-    glGenBuffers(1, &renderer->vbo);
-
-    glBindVertexArray(renderer->vao);
-    
-    glBindBuffer(GL_ARRAY_BUFFER, renderer->vbo);
-    glBufferData(GL_ARRAY_BUFFER, sizeof(vertices), vertices, GL_STATIC_DRAW);
-
-    glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, sizeof(vec4_t), (void*) 0);
-    glEnableVertexAttribArray(0);
-    glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, sizeof(vec4_t), (void*) (2 * sizeof(float)));
-    glEnableVertexAttribArray(1);
-
-    glBindBuffer(GL_ARRAY_BUFFER, 0);
-    glBindVertexArray(0);
-
-    // POST-PROCESSING
-    _renderer_postprocess_init(renderer);
-
-    // TEXTS
-    // alloc text array
-
-    // SHADERS
-    renderer->shader = &shaders[0]; // sprite
-    renderer->postprocessing.shader = &shaders[1]; // crt
-    // renderer->texts[0].shader = &shaders[2]; // text
-    renderer->postprocessing.shaders[0] = &shaders[1]; // crt
-    renderer->postprocessing.shaders[1] = &shaders[3]; // glitch
-
-    // PROJECTION
-    mat4_t projection = mat4_ortho(0.0f, (float) WINDOW_WIDTH, (float) WINDOW_HEIGHT, 0.0f, -1.0f, 1.0f);
-
-    shader_use(renderer->shader); // sprite
-    shader_set_mat4(renderer->shader, "u_Projection", projection);
-
-    // shader_use(renderer->texts[0].shader); // text
-    // shader_set_mat4(renderer->texts[0].shader, "u_Projection", projection);
-
-    shader_use(&shaders[2]); // text
-    shader_set_mat4(&shaders[2], "u_Projection", projection);
+    glBindTexture(GL_TEXTURE_2D, 0);
 }
 
 void renderer_init(renderer_t *renderer, shader_t *shaders) {
 
-    // SPRITES
+    renderer->shader = &shaders[0]; // sprite
+    renderer->postprocessing.shaders[0] = &shaders[1]; // crt
+    renderer->postprocessing.shaders[1] = &shaders[3]; // glitch
+    // renderer->texts[0].shader = &shaders[2]; // text
+
     vec4_t vertices[] = {
         vec4(0.0f, 1.0f, 0.0f, 1.0f), vec4(1.0f, 0.0f, 1.0f, 0.0f), vec4(0.0f, 0.0f, 0.0f, 0.0f), 
         vec4(0.0f, 1.0f, 0.0f, 1.0f), vec4(1.0f, 1.0f, 1.0f, 1.0f), vec4(1.0f, 0.0f, 1.0f, 0.0f)
@@ -540,11 +530,6 @@ void renderer_init(renderer_t *renderer, shader_t *shaders) {
     // TEXTS
     // alloc text array
 
-    // SHADERS
-    renderer->shader = &shaders[0]; // sprite
-    renderer->postprocessing.shader = &shaders[1]; // crt
-    // renderer->texts[0].shader = &shaders[2]; // text
-
     // PROJECTION
     mat4_t projection = mat4_ortho(0.0f, (float) WINDOW_WIDTH, (float) WINDOW_HEIGHT, 0.0f, -1.0f, 1.0f);
 
@@ -559,112 +544,33 @@ void renderer_init(renderer_t *renderer, shader_t *shaders) {
 
 }
 
-void _renderer_sprite_draw(renderer_t *renderer) {}
-
-void _renderer_postprocess_draw(renderer_t *renderer) {
-    glBindFramebuffer(GL_FRAMEBUFFER, 0); 
-    glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
-    glClear(GL_COLOR_BUFFER_BIT);
-
-    uint32_t mrk = 0;
-    for (uint32_t i = 0; i < 2; i++) {
-        glActiveTexture(GL_TEXTURE0);
-        texture_bind(&renderer->postprocessing.textures[mrk]);
-
-        shader_use(renderer->postprocessing.shaders[i]);
-
-        shader_set_int(renderer->postprocessing.shaders[i], "u_Texture", 0);
-
-        // here set uniforms for specific shader
-
-        glBindVertexArray(renderer->vao);
-        glDrawArrays(GL_TRIANGLES, 0, 6);
-        glBindVertexArray(0);
-
-        mrk = mrk ? 0 : 1;
-    }
-
-    // glBindFramebuffer(GL_FRAMEBUFFER, 0);
-    // glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
-    // glClear(GL_COLOR_BUFFER_BIT);
-
-    // glActiveTexture(GL_TEXTURE0);
-    // texture_bind(&renderer->postprocessing.texture);
-
-
-    // shader_use(renderer->postprocessing.shader);
-
-    // shader_set_int(renderer->postprocessing.shader, "u_Texture", 0);
-
-    // shader_set_uint(renderer->postprocessing.shader, "u_Lines", WINDOW_HEIGHT);
-    // shader_set_float(renderer->postprocessing.shader, "u_Bleed", 0.002f);
-    // shader_set_float(renderer->postprocessing.shader, "u_Vignette", 0.8f);
-
-    // glBindVertexArray(renderer->vao);
-    // glDrawArrays(GL_TRIANGLES, 0, 6);
-    // glBindVertexArray(0);
+uint8_t renderer_frame_command_push(renderer_t *renderer, command_t command) {
+    if (renderer->frame.counter >= 16) return 0;
+    renderer->frame.commands[renderer->frame.counter++] = command;
 }
 
-void renderer_draw_f(renderer_t *renderer) {
-
-    glBindFramebuffer(GL_FRAMEBUFFER, renderer->postprocessing.fbo);
-    glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
-    glClear(GL_COLOR_BUFFER_BIT);
-
-    // pass 1
-        // use sprite shader
-        // for each sprite
-            // trans, rot, scale mat4 model
-            // set sprite shader uniforms
-            // bind sprite texture
-            // draw
-
-    // pass 2
-        // for each postprocess shader
-            // use current loop shader
-            // set current loop shader uniforms
-            // bind A or B texture
-            // draw
-
-    uint32_t mrk = 0;
-    for (uint32_t i = 0; i < 2; i++) {
-        if (i == 1) {
-            glBindFramebuffer(GL_FRAMEBUFFER, 0);
-            glClear(GL_COLOR_BUFFER_BIT);
-        }
-
-        shader_use(renderer->postprocessing.shaders[i]);
-
-        // here set uniforms for specific shader
-
-        glBindVertexArray(renderer->vao);
-        glDrawArrays(GL_TRIANGLES, 0, 6);
-        glBindVertexArray(0);
-
-        mrk = mrk ? 0 : 1;
-    }
-
-    // switch to framebuffer 0
-    // swap buffers?
+void renderer_frame_clear(renderer_t *renderer) { // i have to find out, if it can work that way
+    renderer->frame.counter = 0;
 }
 
-void renderer_draw(renderer_t *renderer, texture_t *texture, vec2_t position, vec2_t size, vec2_t scale, vec2_t offset, uint8_t mirror, float time) {
-    shader_use(renderer->shader);
-
+void _renderer_sprite_draw(renderer_t *renderer, texture_t *texture, vec4_t uv, vec4_t trans, float rot, vec3_t color, uint8_t mirror, float time) { // time is temp here (store it in renderer?)
+    
     mat4_t model = mat4(1.0f);
-    model = mat4_trans(model, vec3(position.x, position.y, 0.0f));
-    model = mat4_trans(model, vec3(size.x * 0.5f, size.y * 0.5f, 0.0f));
-    // model = mat4_rot(model, float_rad(sprite -> rotation), vec3(0.0f, 0.0f, 1.0f));
-    // model = mat4_rot(model, rotation, vec3(0.0f, 0.0f, 1.0f));
-    model = mat4_trans(model, vec3(size.x * (-0.5f), size.y * (-0.5f), 0.0f));
-    model = mat4_scale(model, vec3(size.x, size.y, 1.0f));
+    model = mat4_trans(model, vec3(trans.x, trans.y, 0.0f));
+    model = mat4_trans(model, vec3(trans.z * 0.5f, trans.w * 0.5f, 0.0f)); // what does it do? cant remember
+    model = mat4_trans(model, vec3(trans.z * (-0.5f), trans.w * (-0.5f), 0.0f)); // same here?
+    model = mat4_scale(model, vec3(trans.z, trans.w, 1.0f));
+    // rotation??
 
     shader_set_mat4(renderer->shader, "u_Model", model);
-    shader_set_vec2(renderer->shader, "u_Scale", scale);
-    shader_set_vec2(renderer->shader, "u_Offset", offset);
+
+    shader_set_vec2(renderer->shader, "u_Scale", vec2(uv.x, uv.y));
+    shader_set_vec2(renderer->shader, "u_Offset", vec2(uv.z, uv.w));
+
     shader_set_int(renderer->shader, "u_Mirror", mirror);
-    shader_set_vec3(renderer->shader, "u_Color", vec3(1.0f, 1.0f, 1.0f));
-    // shader_set_vec3(renderer->shader, "u_Color", sprite->color);
+
+    shader_set_vec3(renderer->shader, "u_Color", color);
+
     shader_set_float(renderer->shader, "u_GlitchTime", time);
     shader_set_float(renderer->shader, "u_GlitchIntensity", 0.1f);
 
@@ -674,6 +580,72 @@ void renderer_draw(renderer_t *renderer, texture_t *texture, vec2_t position, ve
     glBindVertexArray(renderer->vao);
     glDrawArrays(GL_TRIANGLES, 0, 6);
     glBindVertexArray(0);
+
+}
+
+void _renderer_postprocess_draw(renderer_t *renderer) {
+
+    uint32_t mrk = 0;
+    for (uint32_t i = 0; i < 2; i++) { // loop postprocess shaders
+        if (i == 1) glBindFramebuffer(GL_FRAMEBUFFER, 0); // last loop
+        else glBindFramebuffer(GL_FRAMEBUFFER, renderer->postprocessing.fbos[mrk ? 0 : 1]);
+
+        glClear(GL_COLOR_BUFFER_BIT);
+
+        // shader_use(renderer->postprocessing.shaders[i]);
+
+        // here set uniforms for specific shader
+        if (i == 0) { // crt
+            shader_use(renderer->postprocessing.shaders[i]);
+            shader_set_int(renderer->postprocessing.shaders[i], "u_Texture", 0);
+            shader_set_uint(renderer->postprocessing.shaders[i], "u_Lines", WINDOW_HEIGHT);
+            shader_set_float(renderer->postprocessing.shaders[i], "u_Bleed", 0.002f);
+            shader_set_float(renderer->postprocessing.shaders[i], "u_Vignette", 0.8f);
+        } else if (i == 1) { // glitch'
+            // shader_use(renderer->postprocessing.shaders[i]);
+            // shader_set_float(renderer->shader, "u_Time", 1.0f);
+            // shader_set_float(renderer->shader, "u_Intensity", 0.1f);
+        }
+
+        glActiveTexture(GL_TEXTURE0);
+        texture_bind(&renderer->postprocessing.textures[mrk ? 1 : 0]);
+
+        glBindVertexArray(renderer->vao);
+        glDrawArrays(GL_TRIANGLES, 0, 6);
+        glBindVertexArray(0);
+
+        mrk = mrk ? 0 : 1;
+    }
+
+}
+
+void renderer_draw(renderer_t *renderer, float time) { // store time in renderer?
+
+    glBindFramebuffer(GL_FRAMEBUFFER, renderer->postprocessing.fbos[0]);
+    glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
+    glClear(GL_COLOR_BUFFER_BIT);
+
+    shader_use(renderer->shader);
+    for (uint32_t i = 0; i < renderer->frame.counter; i++) {
+        _renderer_sprite_draw(
+            renderer, 
+            renderer->frame.commands[i].texture, 
+            vec4(renderer->frame.commands[i].uv.scale.x, renderer->frame.commands[i].uv.scale.y, renderer->frame.commands[i].uv.offset.x, renderer->frame.commands[i].uv.offset.y), 
+            vec4(renderer->frame.commands[i].pos.x, renderer->frame.commands[i].pos.y, renderer->frame.commands[i].size.x, renderer->frame.commands[i].size.y), 
+            renderer->frame.commands[i].rot, 
+            renderer->frame.commands[i].color, 
+            renderer->frame.commands[i].mirror, 
+            time // temp
+        );        
+    }
+
+    // render text
+        // if i want to postprocess text as well
+
+    _renderer_postprocess_draw(renderer);
+
+        // if not, then here
+    
 }
 
 // GAME
@@ -859,7 +831,7 @@ void _game_keyboard_callback(GLFWwindow *window, int32_t key, int32_t scan, int3
     }
 }
 
-void _game_keyboard_handle(void) {
+void _game_keyboard_handle(void) { // velocity needs to look for collision as well (currently it just goes beyond it)
     if (context.game.state != GAME_STATE_PLAY) return;
     
     if (context.platform.keys[GLFW_KEY_ESCAPE]) {glfwSetWindowShouldClose(context.platform.window, 1);}
@@ -1095,6 +1067,7 @@ void game_init(void) {
     shader_init(&context.resources.shaders[0], "shader/sprite.vs", "shader/sprite.fs");
     shader_init(&context.resources.shaders[1], "shader/crt.vs", "shader/crt.fs");
     shader_init(&context.resources.shaders[2], "shader/text.vs", "shader/text.fs");
+    shader_init(&context.resources.shaders[3], "shader/glitch.vs", "shader/glitch.fs");
 
     context.resources.textures = mem_arena_alloc(&context.arena, 8 * sizeof(texture_t));
     texture_init(&context.resources.textures[0], "assets/texture/level/floor.jpg");
@@ -1106,6 +1079,7 @@ void game_init(void) {
     //..
 
     // RENDERER
+    context.renderer.frame.commands = mem_arena_alloc(&context.arena, 16 * sizeof(command_t));
     renderer_init(&context.renderer, context.resources.shaders);
 
     // GAME
@@ -1125,7 +1099,7 @@ void game_init(void) {
     context.game.player.mirror = 0;
     context.game.player.fire = 0;
 
-    sprite_init(&context.game.player.sprites[0], &context.resources.textures[1], vec2(0.0f, 0.0f), vec2(192.0f, 192.0f), 0.0f, vec2(0.25f, 1.0f), vec2(0.25f, 0.0f), vec3(1.0f, 1.0f, 1.0f), 0); // idle
+    sprite_init(&context.game.player.sprites[0], &context.resources.textures[1], vec2(0.0f, 0.0f), vec2(192.0f, 192.0f), 0.0f, vec2(0.25f, 1.0f), vec2(0.0f, 0.0f), vec3(1.0f, 1.0f, 1.0f), 0); // idle
     sprite_init(&context.game.player.sprites[1], &context.resources.textures[2], vec2(0.0f, 0.0f), vec2(192.0f, 192.0f), 0.0f, vec2(0.25f, 1.0f), vec2(0.25f, 0.0f), vec3(1.0f, 1.0f, 1.0f), 0); // jump
     sprite_init(&context.game.player.sprites[2], &context.resources.textures[3], vec2(0.0f, 0.0f), vec2(192.0f, 192.0f), 0.0f, vec2(0.167f, 1.0f), vec2(0.167f, 0.0f), vec3(1.0f, 1.0f, 1.0f), 0); // run
     sprite_init(&context.game.player.sprites[3], &context.resources.textures[4], vec2(0.0f, 0.0f), vec2(192.0f, 192.0f), 0.0f, vec2(0.25f, 1.0f), vec2(0.25f, 0.0f), vec3(1.0f, 1.0f, 1.0f), 0); // crouch
@@ -1151,10 +1125,7 @@ void game_update(void) {
         context.ticker.framerate.timer += context.ticker.time_between_frames;
         context.ticker.framerate.counter++;
 
-        if (context.ticker.framerate.timer >= 1.0f) { // TODO draw it in UI
-            // char title[64];
-            // sprintf(title, "%s [%.0f FPS]", WINDOW_NAME, (double) context.ticker.framerate.counter / context.ticker.framerate.timer);
-            // glfwSetWindowTitle(context.platform.window, title);
+        if (context.ticker.framerate.timer >= 1.0f) {
             context.ticker.framerate.value = (double) context.ticker.framerate.counter / context.ticker.framerate.timer;
             context.ticker.framerate.timer -= 1.0;
             context.ticker.framerate.counter = 0;
@@ -1192,57 +1163,46 @@ void game_update(void) {
         // double alpha = context.clock.accumulator / GAME_SIMULATION_FIXED_TIMESTEP;
 
         // RENDERER
-        glBindFramebuffer(GL_FRAMEBUFFER, context.renderer.postprocessing.fbo);
-        glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
-        glClear(GL_COLOR_BUFFER_BIT);
+        renderer_frame_command_push(&context.renderer, (command_t) {
+            .texture = context.game.level.floor.texture, 
+            .uv = {.scale = context.game.level.floor.scale, .offset = context.game.level.floor.offset}, 
+            .pos = context.game.level.floor.pos, 
+            .size = context.game.level.floor.size,
+            .rot = context.game.level.floor.rot,
+            .color = context.game.level.floor.color,
+            .zorder = 2,
+            .mirror = 0
+        });
 
-        renderer_draw(&context.renderer, context.game.level.floor.texture, context.game.level.floor.pos, context.game.level.floor.size, context.game.level.floor.scale, context.game.level.floor.offset, 0, current_time);
-        renderer_draw(&context.renderer, context.game.player.sprites[context.game.player.action].texture, vec2_add(context.game.player.position, context.game.player.sprites[context.game.player.action].pos), context.game.player.sprites[context.game.player.action].size, context.game.player.sprites[context.game.player.action].scale, context.game.player.sprites[context.game.player.action].offset, context.game.player.mirror, current_time);
+        renderer_frame_command_push(&context.renderer, (command_t) {
+            .texture = context.game.player.sprites[context.game.player.action].texture, 
+            .uv = {.scale = context.game.player.sprites[context.game.player.action].scale, .offset = context.game.player.sprites[context.game.player.action].offset}, 
+            .pos = vec2_add(context.game.player.position, context.game.player.sprites[context.game.player.action].pos), 
+            .size = context.game.player.sprites[context.game.player.action].size,
+            .rot = context.game.player.sprites[context.game.player.action].rot,
+            .color = context.game.player.sprites[context.game.player.action].color,
+            .zorder = 2,
+            .mirror = context.game.player.mirror
+        });
 
-        for (uint32_t i = 0; i < context.game.level.counter; i++) {
-            renderer_draw(&context.renderer, context.game.level.bullets[i].sprite.texture, vec2_add(context.game.level.bullets[i].position, context.game.level.bullets[i].sprite.pos), context.game.level.bullets[i].sprite.size, context.game.level.bullets[i].sprite.scale, context.game.level.bullets[i].sprite.offset, context.game.level.bullets[i].mirror, current_time);
-        }
+        renderer_draw(&context.renderer, current_time);
 
-        // text
-        // if i want t o apply shaders to text as well
-        // shader_use(context.ticker.framerate.text.shader);
-        // shader_set_int(context.ticker.framerate.text.shader, "u_Texture", 0);
-        // shader_set_vec3(context.ticker.framerate.text.shader, "u_Color", vec3(1.0f, 1.0f, 1.0f));
- 
-        // char title[64];
-        // sprintf(title, "FPS: %0.f", context.ticker.framerate.value);
-        // text_draw(&context.ticker.framerate.text, title, 16.0f, (float) (WINDOW_HEIGHT - 16.0f), 2.0f);
-        // end of text
+        renderer_frame_clear(&context.renderer);
 
-        glBindFramebuffer(GL_FRAMEBUFFER, 0);
-        glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
-        glClear(GL_COLOR_BUFFER_BIT);
+        // i have to find a good way to render bullets
 
-        // shader_use(context.renderer.postprocessing.shader);
-
-        glActiveTexture(GL_TEXTURE0);
-        texture_bind(&context.renderer.postprocessing.texture);
-
-        shader_use(context.renderer.postprocessing.shader);
-
-        shader_set_int(context.renderer.postprocessing.shader, "u_Texture", 0);
-
-        shader_set_uint(context.renderer.postprocessing.shader, "u_Lines", WINDOW_HEIGHT);
-        shader_set_float(context.renderer.postprocessing.shader, "u_Bleed", 0.002f);
-        shader_set_float(context.renderer.postprocessing.shader, "u_Vignette", 0.8f);
-
-        glBindVertexArray(context.renderer.vao);
-        glDrawArrays(GL_TRIANGLES, 0, 6);
-        glBindVertexArray(0);
+        // for (uint32_t i = 0; i < context.game.level.counter; i++) {
+        //     renderer_draw(&context.renderer, context.game.level.bullets[i].sprite.texture, vec2_add(context.game.level.bullets[i].position, context.game.level.bullets[i].sprite.pos), context.game.level.bullets[i].sprite.size, context.game.level.bullets[i].sprite.scale, context.game.level.bullets[i].sprite.offset, context.game.level.bullets[i].mirror, current_time);
+        // }
 
         // TEXT
         shader_use(context.ticker.framerate.text.shader);
         shader_set_int(context.ticker.framerate.text.shader, "u_Texture", 0);
         shader_set_vec3(context.ticker.framerate.text.shader, "u_Color", vec3(1.0f, 1.0f, 1.0f));
 
-        char title[64];
-        sprintf(title, "FPS: %0.f", context.ticker.framerate.value);
-        text_draw(&context.ticker.framerate.text, title, 16.0f, (float) (WINDOW_HEIGHT - 16.0f), 2.0f);
+        char content[64];
+        sprintf(content, "FPS: %0.f", context.ticker.framerate.value);
+        text_draw(&context.ticker.framerate.text, content, 16.0f, (float) (WINDOW_HEIGHT - 16.0f), 2.0f);
 
         // OPENGL
         glfwSwapBuffers(context.platform.window);
