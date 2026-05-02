@@ -1069,13 +1069,14 @@ void game_init(void) {
     shader_init(&context.resources.shaders[2], "shader/text.vs", "shader/text.fs");
     shader_init(&context.resources.shaders[3], "shader/glitch.vs", "shader/glitch.fs");
 
-    context.resources.textures = mem_arena_alloc(&context.arena, 8 * sizeof(texture_t));
+    context.resources.textures = mem_arena_alloc(&context.arena, 16 * sizeof(texture_t));
     texture_init(&context.resources.textures[0], "assets/texture/level/floor.jpg");
     texture_init(&context.resources.textures[1], "assets/texture/player/body/idle.png");
     texture_init(&context.resources.textures[2], "assets/texture/player/body/jump.png");
     texture_init(&context.resources.textures[3], "assets/texture/player/body/run.png");
     texture_init(&context.resources.textures[4], "assets/texture/player/body/crouch.png");
-    texture_init(&context.resources.textures[5], "assets/texture/projectile.png");
+    texture_init(&context.resources.textures[5], "assets/texture/enemy/body/idle.png");
+    // texture_init(&context.resources.textures[5], "assets/texture/projectile.png");
     //..
 
     // RENDERER
@@ -1104,8 +1105,18 @@ void game_init(void) {
     sprite_init(&context.game.player.sprites[2], &context.resources.textures[3], vec2(0.0f, 0.0f), vec2(192.0f, 192.0f), 0.0f, vec2(0.167f, 1.0f), vec2(0.167f, 0.0f), vec3(1.0f, 1.0f, 1.0f), 0); // run
     sprite_init(&context.game.player.sprites[3], &context.resources.textures[4], vec2(0.0f, 0.0f), vec2(192.0f, 192.0f), 0.0f, vec2(0.25f, 1.0f), vec2(0.25f, 0.0f), vec3(1.0f, 1.0f, 1.0f), 0); // crouch
 
+    context.game.enemy.position = vec2(450.0f, 100.0f);
+    context.game.enemy.box = (collision_box_t) {.min = vec2(450.0f, 100.0f), .max = vec2(642.0f, 292.0f), .velocity = vec2(0.0f, 0.0f), .lock = 0, .impact = 0};
+    context.game.enemy.sprites = mem_arena_alloc(&context.arena, 8 * sizeof(sprite_t));
+    context.game.enemy.action = ACTOR_ACTION_IDLE;
+    context.game.enemy.animation = (actor_animation_t) {.step = ACTOR_ANIMATION_STEP_4, .tick = 0, .lock = 0};
+    context.game.enemy.mirror = 1;
+    context.game.enemy.fire = 0;
+
+    sprite_init(&context.game.enemy.sprites[0], &context.resources.textures[5], vec2(0.0f, 0.0f), vec2(192.0f, 192.0f), 0.0f, vec2(0.25f, 1.0f), vec2(0.0f, 0.0f), vec3(1.0f, 1.0f, 1.0f), 0); // idle
+
     // bullet
-    sprite_init(&context.game.player.sprites[4], &context.resources.textures[5], vec2(0.0f, 0.0f), vec2(24.0f, 16.0f), 0.0f, vec2(1.0f, 1.0f), vec2(0.0f, 0.0f), vec3(1.0f, 1.0f, 1.0f), 0); // projectile
+    // sprite_init(&context.game.player.sprites[4], &context.resources.textures[5], vec2(0.0f, 0.0f), vec2(24.0f, 16.0f), 0.0f, vec2(1.0f, 1.0f), vec2(0.0f, 0.0f), vec3(1.0f, 1.0f, 1.0f), 0); // projectile
 
     // TICKER
     text_init(&context.ticker.framerate.text);
@@ -1183,6 +1194,17 @@ void game_update(void) {
             .color = context.game.player.sprites[context.game.player.action].color,
             .zorder = 2,
             .mirror = context.game.player.mirror
+        });
+
+        renderer_frame_command_push(&context.renderer, (command_t) {
+            .texture = context.game.enemy.sprites[context.game.enemy.action].texture, 
+            .uv = {.scale = context.game.enemy.sprites[context.game.enemy.action].scale, .offset = context.game.enemy.sprites[context.game.enemy.action].offset}, 
+            .pos = vec2_add(context.game.enemy.position, context.game.enemy.sprites[context.game.enemy.action].pos), 
+            .size = context.game.enemy.sprites[context.game.enemy.action].size,
+            .rot = context.game.enemy.sprites[context.game.enemy.action].rot,
+            .color = context.game.enemy.sprites[context.game.enemy.action].color,
+            .zorder = 2,
+            .mirror = context.game.enemy.mirror
         });
 
         renderer_draw(&context.renderer, current_time);
