@@ -836,6 +836,7 @@ void _game_keyboard_handle(void) { // velocity needs to look for collision as we
     
     if (context.platform.keys[GLFW_KEY_ESCAPE]) {glfwSetWindowShouldClose(context.platform.window, 1);}
 
+    // player
     if (!context.platform.keys[GLFW_KEY_W] && !context.platform.keys[GLFW_KEY_S] && !context.platform.keys[GLFW_KEY_A] && !context.platform.keys[GLFW_KEY_D]) {
         if (context.game.player.action != ACTOR_ACTION_IDLE) {
             context.game.player.action = ACTOR_ACTION_IDLE;
@@ -844,6 +845,16 @@ void _game_keyboard_handle(void) { // velocity needs to look for collision as we
         }
     }
 
+    // enemy
+    if (!context.platform.keys[GLFW_KEY_UP] && !context.platform.keys[GLFW_KEY_DOWN] && !context.platform.keys[GLFW_KEY_LEFT] && !context.platform.keys[GLFW_KEY_RIGHT]) {
+        if (context.game.enemy.action != ACTOR_ACTION_IDLE) {
+            context.game.enemy.action = ACTOR_ACTION_IDLE;
+            context.game.enemy.animation.step = ACTOR_ANIMATION_STEP_4;
+            context.game.enemy.animation.tick = 0;
+        }
+    }
+    
+    // player
     if (context.platform.keys[GLFW_KEY_W]) {
         if (context.game.player.box.lock == 0) {
             context.game.player.box.velocity.y = 12.0f;
@@ -858,6 +869,22 @@ void _game_keyboard_handle(void) { // velocity needs to look for collision as we
         if (context.game.player.box.lock == 1) context.game.player.box.lock = 2;
     }
 
+    // enemy
+    if (context.platform.keys[GLFW_KEY_UP]) {
+        if (context.game.enemy.box.lock == 0) {
+            context.game.enemy.box.velocity.y = 12.0f;
+            context.game.enemy.box.lock = 1;
+            context.game.enemy.box.impact = 0;
+        } else if (context.game.enemy.box.lock == 2 && !context.game.enemy.box.impact) {
+            context.game.enemy.box.velocity.y = 16.0f;
+            context.game.enemy.box.lock = 3;
+        }
+    }
+    if (!context.platform.keys[GLFW_KEY_UP]) {
+        if (context.game.enemy.box.lock == 1) context.game.enemy.box.lock = 2;
+    }
+
+    // player
     if (context.platform.keys[GLFW_KEY_A] && !context.platform.keys[GLFW_KEY_S]) {
         if ((context.game.player.position.x - 4.0f) >= 0) context.game.player.box.velocity.x = -4.0f;
         // ANIMATION
@@ -880,15 +907,39 @@ void _game_keyboard_handle(void) { // velocity needs to look for collision as we
         }
     }
 
+    // enemy
+    if (context.platform.keys[GLFW_KEY_LEFT] && !context.platform.keys[GLFW_KEY_DOWN]) {
+        if ((context.game.enemy.position.x - 4.0f) >= 0) context.game.enemy.box.velocity.x = -4.0f;
+        // ANIMATION
+        context.game.enemy.mirror = 1;
+        // if (context.game.enemy.action != ACTOR_ACTION_RUN) {
+        //     context.game.enemy.action = ACTOR_ACTION_RUN;
+        //     context.game.enemy.animation.step = ACTOR_ANIMATION_STEP_6;
+        //     context.game.enemy.animation.tick = 0;
+        // }
+    }
+
+    if (context.platform.keys[GLFW_KEY_RIGHT] && !context.platform.keys[GLFW_KEY_DOWN]) {
+        if ((context.game.enemy.position.x + 4.0f) <= (WINDOW_WIDTH - (context.game.enemy.sprites[context.game.enemy.action].size.x / 2))) context.game.enemy.box.velocity.x = 4.0f;
+        // ANIMATION
+        context.game.enemy.mirror = 0;
+        // if (context.game.enemy.action != ACTOR_ACTION_RUN) {
+        //     context.game.enemy.action = ACTOR_ACTION_RUN;
+        //     context.game.enemy.animation.step = ACTOR_ANIMATION_STEP_6;
+        //     context.game.enemy.animation.tick = 0;
+        // }
+    }
+
     // preposition test
-    vec2_t preposition = vec2_add(context.game.player.position, context.game.player.box.velocity);
-    vec2_t premin = vec2(preposition.x, preposition.y);
-    vec2_t premax = vec2(preposition.x + 192, preposition.y + 192);
+    // vec2_t preposition = vec2_add(context.game.player.position, context.game.player.box.velocity);
+    // vec2_t premin = vec2(preposition.x, preposition.y);
+    // vec2_t premax = vec2(preposition.x + 192, preposition.y + 192);
 
     // TODO i need to find a way to stop velocity before or right on collision box border
 
     // end of preposition test
 
+    // player
     context.game.player.position = vec2_add(context.game.player.position, context.game.player.box.velocity);
     context.game.player.box.min = vec2(context.game.player.position.x, context.game.player.position.y);
     context.game.player.box.max = vec2(context.game.player.position.x + 144, context.game.player.position.y + 144);
@@ -901,6 +952,20 @@ void _game_keyboard_handle(void) { // velocity needs to look for collision as we
         context.game.player.animation.tick = 2;
     }
 
+    // enemy
+    context.game.enemy.position = vec2_add(context.game.enemy.position, context.game.enemy.box.velocity);
+    context.game.enemy.box.min = vec2(context.game.enemy.position.x, context.game.enemy.position.y);
+    context.game.enemy.box.max = vec2(context.game.enemy.position.x + 144, context.game.enemy.position.y + 144);
+
+    if (context.platform.keys[GLFW_KEY_DOWN]) {
+        context.game.enemy.box.max.y = context.game.enemy.position.y + 96;
+        // ANIMATION
+        // context.game.enemy.action = ACTOR_ACTION_CROUCH;
+        // context.game.enemy.animation.step = ACTOR_ANIMATION_STEP_1;
+        // context.game.enemy.animation.tick = 2;
+    }
+
+    // player
     if (collision_box_intersection(&context.game.player.box, &context.game.level.box)) {
         context.game.player.box.velocity = vec2(0.0f, 0.0f);
         if (context.game.player.box.lock) context.game.player.box.lock = 0; 
@@ -908,7 +973,18 @@ void _game_keyboard_handle(void) { // velocity needs to look for collision as we
         // printf("PLAYER_COLLISION\n");
     } else {
         context.game.player.box.velocity.y += -1;
-        printf("PLAYER_VELOCITY={x=%f, y=%f}\n", context.game.player.box.velocity.x, context.game.player.box.velocity.y);
+        // printf("PLAYER_VELOCITY={x=%f, y=%f}\n", context.game.player.box.velocity.x, context.game.player.box.velocity.y);
+    }
+
+    // enemy
+    if (collision_box_intersection(&context.game.enemy.box, &context.game.level.box)) {
+        context.game.enemy.box.velocity = vec2(0.0f, 0.0f);
+        if (context.game.enemy.box.lock) context.game.enemy.box.lock = 0; 
+        context.game.enemy.box.impact = 1;
+        // printf("ENEMY_COLLISION\n");
+    } else {
+        context.game.enemy.box.velocity.y += -1;
+        // printf("ENEMY_VELOCITY={x=%f, y=%f}\n", context.game.enemy.box.velocity.x, context.game.enemy.box.velocity.y);
     }
 
     if (context.platform.keys[GLFW_KEY_F]) {
@@ -1162,9 +1238,15 @@ void game_update(void) {
             while (context.ticker.animation.accumulator >= GAME_ANIMATION_FIXED_TIMESTEP) {
                 context.ticker.animation.accumulator -= GAME_ANIMATION_FIXED_TIMESTEP;
 
+                // player
                 context.game.player.sprites[context.game.player.action].offset.x = (context.game.player.sprites[context.game.player.action].scale.x * context.game.player.animation.tick);
                 if (context.game.player.animation.lock != 2 && context.game.player.animation.tick < context.game.player.animation.step) context.game.player.animation.tick++;
                 else if (context.game.player.animation.lock != 2) context.game.player.animation.tick = 0;
+
+                // enemy
+                context.game.enemy.sprites[context.game.enemy.action].offset.x = (context.game.enemy.sprites[context.game.enemy.action].scale.x * context.game.enemy.animation.tick);
+                if (context.game.enemy.animation.lock != 2 && context.game.enemy.animation.tick < context.game.enemy.animation.step) context.game.enemy.animation.tick++;
+                else if (context.game.enemy.animation.lock != 2) context.game.enemy.animation.tick = 0;
             }
 
             // physics
