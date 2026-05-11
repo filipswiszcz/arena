@@ -750,6 +750,7 @@ uint8_t GAME_MEMORY[GAME_MEMORY_CAPACITY];
 #define GAME_ACTOR_SPRITE_SCALE 4
 
 #define GAME_LEVEL_SPRITES_SIZE 4
+#define GAME_LEVEL_TEXTS_SIZE 2
 #define GAME_LEVEL_BULLETS_MAX 8
 #define GAME_LEVEL_BULLET_SPEED 8
 
@@ -808,8 +809,10 @@ static struct {
             collision_box_t box;
             // // end of temp
 
+            text_t *texts;
+
             bullet_t *bullets;
-            
+
         } level;
 
         actor_t player;
@@ -976,15 +979,15 @@ void _game_keyboard_handle(void) { // velocity needs to look for collision as we
     }
 
     // player
-    if (collision_box_intersection(&context.game.player.box, &context.game.level.box)) {
-        context.game.player.box.velocity = vec2(0.0f, 0.0f);
-        if (context.game.player.box.lock) context.game.player.box.lock = 0; 
-        context.game.player.box.impact = 1;
-        // printf("PLAYER_COLLISION\n");
-    } else {
-        context.game.player.box.velocity.y += -1;
-        // printf("PLAYER_VELOCITY={x=%f, y=%f}\n", context.game.player.box.velocity.x, context.game.player.box.velocity.y);
-    }
+    // if (collision_box_intersection(&context.game.player.box, &context.game.level.box)) {
+    //     context.game.player.box.velocity = vec2(0.0f, 0.0f);
+    //     if (context.game.player.box.lock) context.game.player.box.lock = 0; 
+    //     context.game.player.box.impact = 1;
+    //     // printf("PLAYER_COLLISION\n");
+    // } else {
+    //     context.game.player.box.velocity.y += -1;
+    //     // printf("PLAYER_VELOCITY={x=%f, y=%f}\n", context.game.player.box.velocity.x, context.game.player.box.velocity.y);
+    // }
 
     // enemy
     if (collision_box_intersection(&context.game.enemy.box, &context.game.level.box)) {
@@ -1143,6 +1146,59 @@ void _game_keyboard_handle(void) { // velocity needs to look for collision as we
     }
 }*/
 
+void _game_physics_handle(actor_t *actor, collision_box_t *box) {
+    if (context.game.state != GAME_STATE_PLAY) return;
+
+    if (actor->box.impact && actor->box.velocity.x == 0 && actor->box.velocity.y == 0) return;
+
+    vec2_t prepos = vec2_add(actor->position, actor->box.velocity);
+    vec2_t premin = vec2(prepos.x, prepos.y);
+    vec2_t premax = vec2(prepos.x + (48.0f * GAME_ACTOR_SPRITE_SCALE), prepos.y + (48.0f * GAME_ACTOR_SPRITE_SCALE));
+
+    int8_t coll = (((premax.x >= box->min.x) && (premin.x <= box->max.x)) 
+        && ((premax.y >= box->min.y) && (premin.y <= box->max.y)));
+
+    if (coll) {
+
+        // find the side of the collision
+            // if it is a top collision, then y velocity should be zeroed without calling an impact
+            // if it is a side collision, then y velocity should still decrease
+            // if it is a bottom collision, then y velocity should be zeroed and impact should be called
+
+        if (actor->box.max.x < box->min.x || actor->box.min.y > box->max.y) {
+
+            // printf("COLLISION_SIDE\n");
+
+            // float x = actor->position.x - box->max.x;
+            // if (y > 0) actor->box.velocity.y = (y * -1.0f);
+            // else {
+            //     // actor->box.velocity = vec2(0.0f, 0.0f);
+            //     actor->box.velocity.x = 0.0f;
+            //     actor->box.lock = 0;
+            //     actor->box.impact = 1;
+            // }
+
+        }
+
+        if (1) { // check if it is a bottom collision
+
+            // printf("COLLISION_BOTTOM\n");
+
+            float y = actor->position.y - box->max.y;
+            if (y > 0) actor->box.velocity.y = (y * -1.0f);
+            else {
+                actor->box.velocity = vec2(0.0f, 0.0f);
+                actor->box.lock = 0;
+                actor->box.impact = 1;
+            }
+        }
+
+    } else {
+        actor->box.velocity.y += -1;
+    }
+
+}
+
 void game_init(void) {
 
     // GLFW
@@ -1224,13 +1280,14 @@ void game_init(void) {
     // GAME
     context.game.state = GAME_STATE_PLAY;
     context.game.level.sprites = mem_arena_alloc(&context.arena, GAME_LEVEL_SPRITES_SIZE * sizeof(sprite_t));
+    context.game.level.texts = mem_arena_alloc(&context.arena, GAME_LEVEL_TEXTS_SIZE * sizeof(text_t));
     context.game.level.bullets = mem_arena_alloc(&context.arena, GAME_LEVEL_BULLETS_MAX * sizeof(bullet_t));
     for (uint32_t i = 0; i < GAME_LEVEL_BULLETS_MAX; i++) context.game.level.bullets[i] = (bullet_t) {0}; // is there a cooler way to init this?
 
     // level
     context.game.level.box = (collision_box_t) {.min = vec2(0.0f, 0.0f), .max = vec2((float) WINDOW_WIDTH, (WINDOW_HEIGHT / 12.0f)), .velocity = vec2(0.0f, 0.0f), .lock = 0, .impact = 1};
 
-    sprite_init(&context.game.level.sprites[0], &context.resources.textures[0], vec2(0.0f, 0.0f), vec2(800.0f, 50.0f), 0.0f, vec2(1.0f, 1.0f), vec2(0.0f, 0.0f), vec3(1.0f, 1.0f, 1.0f), 0); // tile
+    sprite_init(&context.game.level.sprites[0], &context.resources.textures[0], vec2(0.0f, 0.0f), vec2((float) WINDOW_WIDTH, 50.0f), 0.0f, vec2(1.0f, 1.0f), vec2(0.0f, 0.0f), vec3(1.0f, 1.0f, 1.0f), 0); // tile
     sprite_init(&context.game.level.sprites[1], &context.resources.textures[15], vec2(0.0f, 0.0f), vec2(6.0f * GAME_ACTOR_SPRITE_SCALE, 6.0f * GAME_ACTOR_SPRITE_SCALE), 0.0f, vec2(1.0f, 1.0f), vec2(0.0f, 0.0f), vec3(1.0f, 1.0f, 1.0f), 0); // bullet
     // sprite_init(&context.game.player.sprites[16], &context.resources.textures[5], vec2(0.0f, 0.0f), vec2(24.0f, 16.0f), 0.0f, vec2(1.0f, 1.0f), vec2(0.0f, 0.0f), vec3(1.0f, 1.0f, 1.0f), 0); // gun
 
@@ -1305,6 +1362,9 @@ void game_update(void) {
         while (context.ticker.physics.accumulator >= GAME_SIMULATION_FIXED_TIMESTEP) {
             
             // TODO save previous actors states
+
+            _game_physics_handle(&context.game.player, &context.game.level.box);
+            // _game_physics_handle(&context.game.player, &context.game.enemy.box);
 
             // input
             _game_keyboard_handle();
