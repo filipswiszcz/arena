@@ -655,6 +655,7 @@ typedef struct {
     vec2_t min, max; // offsets to parent pos
     vec2_t velocity;
     uint8_t lock, impact;
+    uint8_t owner;
 } collision_box_t;
 
 // TODO make collision detection better
@@ -747,7 +748,7 @@ uint8_t GAME_MEMORY[GAME_MEMORY_CAPACITY];
 #define GAME_RENDERER_COMMANDS_SIZE 16
 
 #define GAME_ACTOR_SPRITES_SIZE 8
-#define GAME_ACTOR_SPRITE_SCALE 4
+#define GAME_ACTOR_SPRITE_SCALE 2
 
 #define GAME_LEVEL_SPRITES_SIZE 4
 #define GAME_LEVEL_TEXTS_SIZE 2
@@ -866,11 +867,11 @@ void _game_keyboard_handle(void) { // velocity needs to look for collision as we
     // player
     if (context.platform.keys[GLFW_KEY_W]) {
         if (context.game.player.box.lock == 0) {
-            context.game.player.box.velocity.y = 12.0f;
+            context.game.player.box.velocity.y = 16.0f;
             context.game.player.box.lock = 1;
             context.game.player.box.impact = 0;
         } else if (context.game.player.box.lock == 2 && !context.game.player.box.impact) {
-            context.game.player.box.velocity.y = 16.0f;
+            context.game.player.box.velocity.y = 24.0f;
             context.game.player.box.lock = 3;
             if (context.game.player.action != ACTOR_ACTION_DOUBLE_JUMP) {
                 context.game.player.action = ACTOR_ACTION_DOUBLE_JUMP;
@@ -955,10 +956,10 @@ void _game_keyboard_handle(void) { // velocity needs to look for collision as we
     // player
     context.game.player.position = vec2_add(context.game.player.position, context.game.player.box.velocity);
     context.game.player.box.min = vec2(context.game.player.position.x, context.game.player.position.y);
-    context.game.player.box.max = vec2(context.game.player.position.x + 144, context.game.player.position.y + 144);
+    context.game.player.box.max = vec2(context.game.player.position.x + (GAME_ACTOR_SPRITE_SCALE * 48.0f), context.game.player.position.y + (GAME_ACTOR_SPRITE_SCALE * 48.0f));
 
     if (context.platform.keys[GLFW_KEY_S]) {
-        context.game.player.box.max.y = context.game.player.position.y + 96;
+        context.game.player.box.max.y = context.game.player.position.y + (GAME_ACTOR_SPRITE_SCALE * 24.0f);
         // ANIMATION
         context.game.player.action = ACTOR_ACTION_CROUCH;
         context.game.player.animation.step = ACTOR_ANIMATION_STEP_1;
@@ -968,10 +969,10 @@ void _game_keyboard_handle(void) { // velocity needs to look for collision as we
     // enemy
     context.game.enemy.position = vec2_add(context.game.enemy.position, context.game.enemy.box.velocity);
     context.game.enemy.box.min = vec2(context.game.enemy.position.x, context.game.enemy.position.y);
-    context.game.enemy.box.max = vec2(context.game.enemy.position.x + 144, context.game.enemy.position.y + 144);
+    context.game.enemy.box.max = vec2(context.game.enemy.position.x + (GAME_ACTOR_SPRITE_SCALE * 48.0f), context.game.enemy.position.y + (GAME_ACTOR_SPRITE_SCALE * 48.0f));
 
     if (context.platform.keys[GLFW_KEY_DOWN]) {
-        context.game.enemy.box.max.y = context.game.enemy.position.y + 96;
+        context.game.enemy.box.max.y = context.game.enemy.position.y + (GAME_ACTOR_SPRITE_SCALE * 24.0f);
         // ANIMATION
         // context.game.enemy.action = ACTOR_ACTION_CROUCH;
         // context.game.enemy.animation.step = ACTOR_ANIMATION_STEP_1;
@@ -1149,7 +1150,7 @@ void _game_keyboard_handle(void) { // velocity needs to look for collision as we
 void _game_physics_handle(actor_t *actor, collision_box_t *box) {
     if (context.game.state != GAME_STATE_PLAY) return;
 
-    if (actor->box.impact && actor->box.velocity.x == 0 && actor->box.velocity.y == 0) return;
+    // if (actor->box.impact && actor->box.velocity.x == 0 && actor->box.velocity.y == 0) return;
 
     vec2_t prepos = vec2_add(actor->position, actor->box.velocity);
     vec2_t premin = vec2(prepos.x, prepos.y);
@@ -1160,29 +1161,20 @@ void _game_physics_handle(actor_t *actor, collision_box_t *box) {
 
     if (coll) {
 
-        // find the side of the collision
-            // if it is a top collision, then y velocity should be zeroed without calling an impact
-            // if it is a side collision, then y velocity should still decrease
-            // if it is a bottom collision, then y velocity should be zeroed and impact should be called
+        vec2_t acpos = vec2(premin.x + ((premax.x - premin.x) / 2), premin.y + ((premax.y - premin.y) / 2));
+        vec2_t bcpos = vec2(box->min.x + ((box->max.x - box->min.x) / 2), box->min.y + ((box->max.y - box->min.y) / 2));
 
-        if (actor->box.max.x < box->min.x || actor->box.min.y > box->max.y) {
+        float opp = bcpos.y - acpos.y;
+        float adj = bcpos.x - acpos.x;
 
-            // printf("COLLISION_SIDE\n");
+        float alpha = 180.0f - fmodf((roundf(90.0f - float_deg(atan2f(opp, adj))) + 180.0f), 360.0f);
+        // printf("alpha=%f\n", alpha);
 
-            // float x = actor->position.x - box->max.x;
-            // if (y > 0) actor->box.velocity.y = (y * -1.0f);
-            // else {
-            //     // actor->box.velocity = vec2(0.0f, 0.0f);
-            //     actor->box.velocity.x = 0.0f;
-            //     actor->box.lock = 0;
-            //     actor->box.impact = 1;
-            // }
+        float beta = float_deg(atanf((bcpos.x - box->min.x) / (box->max.y - bcpos.y)));
+        // printf("beta=%f\n", beta);
 
-        }
-
-        if (1) { // check if it is a bottom collision
-
-            // printf("COLLISION_BOTTOM\n");
+        if (alpha < ((180.0f - beta) * -1) || alpha > (180.0f - beta)) {
+            if (box->owner) printf("COLLISION_TOP\n");
 
             float y = actor->position.y - box->max.y;
             if (y > 0) actor->box.velocity.y = (y * -1.0f);
@@ -1191,9 +1183,39 @@ void _game_physics_handle(actor_t *actor, collision_box_t *box) {
                 actor->box.lock = 0;
                 actor->box.impact = 1;
             }
+
+        } else if (alpha < (beta * -1) && alpha > ((180.0f - beta) * -1)) {
+            if (box->owner) printf("COLLISION_LEFT\n");
+
+            float x = box->min.x - actor->position.x;
+            if (x > 0) actor->box.velocity.x = (x * -1.0f);
+            else {
+                actor->box.velocity.x = 0.0f;
+                actor->box.lock = 0;
+                actor->box.impact = 1;
+            }
+
+        } else if (alpha < beta && alpha > (beta * -1)) {
+            if (box->owner) printf("COLLISION_BOTTOM\n");
+        } else if (alpha < (180.0f - beta) && alpha > beta) {
+            if (box->owner) printf("COLLISION_RIGHT\n");
         }
 
+        // if (1) { // check if it is a bottom collision
+
+        //     // printf("COLLISION_BOTTOM\n");
+
+        //     float y = actor->position.y - box->max.y;
+        //     if (y > 0) actor->box.velocity.y = (y * -1.0f);
+        //     else {
+        //         actor->box.velocity = vec2(0.0f, 0.0f);
+        //         actor->box.lock = 0;
+        //         actor->box.impact = 1;
+        //     }
+        // }
+
     } else {
+        if (actor->box.impact && actor->box.velocity.x == 0 && actor->box.velocity.y == 0) return;
         actor->box.velocity.y += -1;
     }
 
@@ -1228,7 +1250,7 @@ void game_init(void) {
 #endif
 
     // OPENGL
-    // glPolygonMode(GL_FRONT_AND_BACK, GL_LINE);
+    // glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
     glViewport(0, 0, WINDOW_WIDTH, WINDOW_HEIGHT);
     glEnable(GL_BLEND);
     glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
@@ -1263,7 +1285,7 @@ void game_init(void) {
     texture_init(&context.resources.textures[6], "assets/texture/player/body/punk_attack.png");
     texture_init(&context.resources.textures[7], "assets/texture/player/body/punk_death.png");
 
-    texture_init(&context.resources.textures[8], "assets/texture/enemy/body/cyborg_idle.png");
+    texture_init(&context.resources.textures[8], "assets/texture/enemy/body/cyborg_idle.png"); 
     texture_init(&context.resources.textures[9], "assets/texture/enemy/body/cyborg_jump.png");
     texture_init(&context.resources.textures[10], "assets/texture/enemy/body/cyborg_doublejump.png");
     texture_init(&context.resources.textures[11], "assets/texture/enemy/body/cyborg_run.png");
@@ -1285,7 +1307,7 @@ void game_init(void) {
     for (uint32_t i = 0; i < GAME_LEVEL_BULLETS_MAX; i++) context.game.level.bullets[i] = (bullet_t) {0}; // is there a cooler way to init this?
 
     // level
-    context.game.level.box = (collision_box_t) {.min = vec2(0.0f, 0.0f), .max = vec2((float) WINDOW_WIDTH, (WINDOW_HEIGHT / 12.0f)), .velocity = vec2(0.0f, 0.0f), .lock = 0, .impact = 1};
+    context.game.level.box = (collision_box_t) {.min = vec2(0.0f, 0.0f), .max = vec2((float) WINDOW_WIDTH, (WINDOW_HEIGHT / 12.0f)), .velocity = vec2(0.0f, 0.0f), .lock = 0, .impact = 1, .owner = 0};
 
     sprite_init(&context.game.level.sprites[0], &context.resources.textures[0], vec2(0.0f, 0.0f), vec2((float) WINDOW_WIDTH, 50.0f), 0.0f, vec2(1.0f, 1.0f), vec2(0.0f, 0.0f), vec3(1.0f, 1.0f, 1.0f), 0); // tile
     sprite_init(&context.game.level.sprites[1], &context.resources.textures[15], vec2(0.0f, 0.0f), vec2(6.0f * GAME_ACTOR_SPRITE_SCALE, 6.0f * GAME_ACTOR_SPRITE_SCALE), 0.0f, vec2(1.0f, 1.0f), vec2(0.0f, 0.0f), vec3(1.0f, 1.0f, 1.0f), 0); // bullet
@@ -1293,7 +1315,7 @@ void game_init(void) {
 
     // actor
     context.game.player.position = vec2(150.0f, 100.0f);
-    context.game.player.box = (collision_box_t) {.min = vec2(150.0f, 100.0f), .max = vec2(342.0f, 292.0f), .velocity = vec2(0.0f, 0.0f), .lock = 0, .impact = 0};
+    context.game.player.box = (collision_box_t) {.min = vec2(150.0f, 100.0f), .max = vec2(342.0f, 292.0f), .velocity = vec2(0.0f, 0.0f), .lock = 0, .impact = 0, .owner = 0};
     context.game.player.sprites = mem_arena_alloc(&context.arena, GAME_ACTOR_SPRITES_SIZE * sizeof(sprite_t));
     context.game.player.action = ACTOR_ACTION_IDLE;
     context.game.player.animation = (actor_animation_t) {.step = ACTOR_ANIMATION_STEP_4, .tick = 0, .lock = 0};
@@ -1310,7 +1332,7 @@ void game_init(void) {
     sprite_init(&context.game.player.sprites[6], &context.resources.textures[7], vec2(0.0f, 0.0f), vec2(48.0f * GAME_ACTOR_SPRITE_SCALE, 48.0f * GAME_ACTOR_SPRITE_SCALE), 0.0f, vec2(0.167f, 1.0f), vec2(0.167f, 0.0f), vec3(1.0f, 1.0f, 1.0f), 0); // death
 
     context.game.enemy.position = vec2(450.0f, 100.0f);
-    context.game.enemy.box = (collision_box_t) {.min = vec2(450.0f, 100.0f), .max = vec2(642.0f, 292.0f), .velocity = vec2(0.0f, 0.0f), .lock = 0, .impact = 0};
+    context.game.enemy.box = (collision_box_t) {.min = vec2(450.0f, 100.0f), .max = vec2(642.0f, 292.0f), .velocity = vec2(0.0f, 0.0f), .lock = 0, .impact = 0, .owner = 1};
     context.game.enemy.sprites = mem_arena_alloc(&context.arena, GAME_ACTOR_SPRITES_SIZE * sizeof(sprite_t));
     context.game.enemy.action = ACTOR_ACTION_IDLE;
     context.game.enemy.animation = (actor_animation_t) {.step = ACTOR_ANIMATION_STEP_4, .tick = 0, .lock = 0};
@@ -1364,7 +1386,7 @@ void game_update(void) {
             // TODO save previous actors states
 
             _game_physics_handle(&context.game.player, &context.game.level.box);
-            // _game_physics_handle(&context.game.player, &context.game.enemy.box);
+            _game_physics_handle(&context.game.player, &context.game.enemy.box);
 
             // input
             _game_keyboard_handle();

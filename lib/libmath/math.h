@@ -6,9 +6,14 @@
 #define PI 3.14159265358979323846
 
 #define float_rad(d) (m_float_rad(d))
+#define float_deg(r) (m_float_deg(r))
 
 static inline float m_float_rad(float d) {
     return d * 0.0174532951994329576923690768489;
+}
+
+static inline float m_float_deg(float r) {
+    return r * 57.295779513082320876798154814105;
 }
 
 // VEC2
