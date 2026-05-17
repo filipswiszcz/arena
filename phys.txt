@@ -1,0 +1,18 @@
+GAME PHYSICS:
+
+actor struct:
+    - global pos (vec2)
+    - rigidybody (struct)
+    - collider (struct)
+    - bool grounded
+
+rigidbody struct:
+    - vel, acc (vec2)
+    - ?mass, drag (float)
+    - grav (bool)
+    - ?accu force (vec2)
+
+collider struct:
+    - local pos (vec2)
+    - min/max (vec2)
+    - dir (int32_t [4]) // [N, E, S, W]
