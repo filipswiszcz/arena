@@ -1,7 +1,7 @@
 GAME PHYSICS:
 
-_game_phys_sys_run()
-_game_coll_sys_run()
+_game_phys_handle()
+_game_coll_handle()
 renderer_draw()
 _game_keyboard_handle()
 

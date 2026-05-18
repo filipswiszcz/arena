@@ -651,6 +651,26 @@ void renderer_draw(renderer_t *renderer, float time) { // store time in renderer
 
 // GAME
 
+#define GAME_GRAV -980.0f
+
+typedef struct {
+    vec2_t vel, force;
+    float mass, grav;
+    float fric, drag;
+    float bounce;
+} rigidbody_t;
+
+#define GAME_COLL_NONE 0
+#define GAME_COLL_TOP (1 << 0)
+#define GAME_COLL_LEFT (1 << 1)
+#define GAME_COLL_BOTTOM (1 << 2)
+#define GAME_COLL_RIGHT (1 << 3)
+
+typedef struct {
+    vec2_t min, max;
+    uint8_t side;
+} collider_t;
+
 typedef struct {
     vec2_t min, max; // offsets to parent pos
     vec2_t velocity;
@@ -694,6 +714,15 @@ typedef struct {
 } actor_animation_t;
 
 typedef struct {
+
+    // temp
+    vec2_t pos;
+    rigidbody_t rigb;
+    collider_t coll;
+
+    uint8_t grounded;
+    // temp
+
     vec2_t position;
     collision_box_t box;
     // sprites as array? and action == index (with pos relative to actor's pose?), pos
@@ -707,9 +736,26 @@ typedef struct {
     uint8_t fire; // it manages hand and gun | when 1, then hand and gun are going vert (animation)
 } actor_t;
 
-void actor_move(actor_t *actor) {}
+void game_actor_move(actor_t *actor, float xacc, uint8_t jump) {
+    actor->rigb.force.x += (xacc * 1500.0f);
+    (jump && actor->grounded) ? (void) (actor->rigb.vel.y = 400.f, actor->grounded = 0) : (void) 0;
 
-void actor_fire(actor_t *actor) {}
+    vec2_t acc = vec2(actor->rigb.force.x * actor->rigb.mass, (actor->rigb.force.y * actor->rigb.mass) + (GAME_GRAV * actor->rigb.grav));
+
+    actor->rigb.vel.x += acc.x;
+    actor->rigb.vel.y += acc.y;
+
+    if (actor->grounded) actor->rigb.vel.x *= actor->rigb.fric;
+    else {
+        actor->rigb.vel.x *= actor->rigb.drag;
+        // actor->rigb.vel.y *= actor->rigb.drag;
+    }
+
+    actor->rigb.vel.x = 0.0f;
+    actor->rigb.vel.y = 0.0f;
+}
+
+// void game_actor_fire(actor_t *actor) {}
 
 typedef struct {
     vec2_t pos;
@@ -834,6 +880,8 @@ void _game_win32_icon_init(void) {
     stbi_image_free(pixels);
 }
 
+void _game_macos_icon_init(void) {}
+
 void _game_keyboard_callback(GLFWwindow *window, int32_t key, int32_t scan, int32_t action, int32_t mode) {
     if (key > -1 && key < 512) {
         if (action == GLFW_PRESS) context.platform.keys[key] = 1;
@@ -871,7 +919,7 @@ void _game_keyboard_handle(void) { // velocity needs to look for collision as we
             context.game.player.box.lock = 1;
             context.game.player.box.impact = 0;
         } else if (context.game.player.box.lock == 2 && !context.game.player.box.impact) {
-            context.game.player.box.velocity.y = 24.0f;
+            context.game.player.box.velocity.y = 18.0f;
             context.game.player.box.lock = 3;
             if (context.game.player.action != ACTOR_ACTION_DOUBLE_JUMP) {
                 context.game.player.action = ACTOR_ACTION_DOUBLE_JUMP;
@@ -922,6 +970,10 @@ void _game_keyboard_handle(void) { // velocity needs to look for collision as we
         }
     }
 
+    if (!context.platform.keys[GLFW_KEY_A] && !context.platform.keys[GLFW_KEY_D]) {
+        context.game.player.box.velocity.x = 0.0f;
+    }
+
     // enemy
     if (context.platform.keys[GLFW_KEY_LEFT] && !context.platform.keys[GLFW_KEY_DOWN]) {
         if ((context.game.enemy.position.x - 4.0f) >= 0) context.game.enemy.box.velocity.x = -4.0f;
@@ -954,9 +1006,9 @@ void _game_keyboard_handle(void) { // velocity needs to look for collision as we
     // TODO i need to find a way to stop velocity before or right on collision box border
 
     // player
-    context.game.player.position = vec2_add(context.game.player.position, context.game.player.box.velocity);
-    context.game.player.box.min = vec2(context.game.player.position.x, context.game.player.position.y);
-    context.game.player.box.max = vec2(context.game.player.position.x + (GAME_ACTOR_SPRITE_SCALE * 48.0f), context.game.player.position.y + (GAME_ACTOR_SPRITE_SCALE * 48.0f));
+    // context.game.player.position = vec2_add(context.game.player.position, context.game.player.box.velocity);
+    // context.game.player.box.min = vec2(context.game.player.position.x, context.game.player.position.y);
+    // context.game.player.box.max = vec2(context.game.player.position.x + (GAME_ACTOR_SPRITE_SCALE * 48.0f), context.game.player.position.y + (GAME_ACTOR_SPRITE_SCALE * 48.0f));
 
     if (context.platform.keys[GLFW_KEY_S]) {
         context.game.player.box.max.y = context.game.player.position.y + (GAME_ACTOR_SPRITE_SCALE * 24.0f);
@@ -1070,82 +1122,25 @@ void _game_keyboard_handle(void) { // velocity needs to look for collision as we
    
 }
 
-/*void _game_keyboard_handle(void) {
-    // if (context.state = PAUSE) {// check for resume key; return;}
-    if (context.keys[GLFW_KEY_ESCAPE]) {glfwSetWindowShouldClose(context.window, 1);}
-    if (!context.keys[GLFW_KEY_W] && !context.keys[GLFW_KEY_S] && !context.keys[GLFW_KEY_A] && !context.keys[GLFW_KEY_D]) {
-        if (context.game.player.action == ACTOR_ACTION_IDLE || context.game.player.animation.lock == 1) return;
-        context.game.player.action = ACTOR_ACTION_IDLE;
-        context.game.player.animation.step = ACTOR_ANIMATION_STEP_4;
-        context.game.player.animation.tick = 0;
-        context.game.player.animation.lock = 0;
-    }
-    if (context.keys[GLFW_KEY_W]) {
-        // physics
-        if (context.keys[GLFW_KEY_A] && !context.keys[GLFW_KEY_D]) {} // NE velocity
-        if (context.keys[GLFW_KEY_D] && !context.keys[GLFW_KEY_A]) {} // NW velocity
-        
-        // collision
+void _game_keyboard_qhandle(void) {
 
-        // animation
-        if (context.game.player.animation.lock != 1) {
-            context.game.player.box.velocity.y += 32;
-            context.game.player.box.impact = 0;
-        }
-        if (context.game.player.action != ACTOR_ACTION_JUMP) {
-            context.game.player.action = ACTOR_ACTION_JUMP;
-            context.game.player.animation.step = ACTOR_ANIMATION_STEP_4;
-            context.game.player.animation.tick = 0;
-            context.game.player.animation.lock = 3;
-        }
-    }
-    if (context.keys[GLFW_KEY_S]) {
-        // physics
-        //..
+    float xacc = 0.0f;
+    uint8_t jump = 0;
 
-        // printf("PRESS_KEY_S\n");
+    // KEY W
+    if (context.platform.keys[GLFW_KEY_W]) jump = 1;
 
-        // animation
-        if (context.game.player.animation.lock == 1) {
-            context.game.player.animation.tick = context.game.player.mirror ? 1 : 2;
-            context.game.player.animation.lock = 2;
-            // printf("UPDATE_LOCK_2\n");
-        }
-        if (context.game.player.action != ACTOR_ACTION_CROUCH) {
-            context.game.player.action = ACTOR_ACTION_CROUCH;
-            context.game.player.animation.step = ACTOR_ANIMATION_STEP_4;
-            context.game.player.animation.tick = 0;
-            context.game.player.animation.lock = 1;
-            // printf("UPDATE_LOCK_1\n");
-        }
-    }
-    if (context.keys[GLFW_KEY_A]) {
-        if (context.game.player.animation.lock) return;
-        if (context.game.player.position.x > 0) {
-            context.game.player.position.x -= 4.0f;
-            context.game.player.mirror = 1;
-            // animation
-            if (context.game.player.action != ACTOR_ACTION_RUN) {
-                context.game.player.action = ACTOR_ACTION_RUN;
-                context.game.player.animation.step = ACTOR_ANIMATION_STEP_6;
-                context.game.player.animation.tick = 0;
-            }
-        }
-    }
-    if (context.keys[GLFW_KEY_D]) {
-        if (context.game.player.animation.lock) return;
-        if (context.game.player.position.x < (WINDOW_WIDTH - (context.game.player.sprites[context.game.player.action].size.x / 2))) {
-            context.game.player.position.x += 4.0f;
-            context.game.player.mirror = 0;
-            // animation
-            if (context.game.player.action != ACTOR_ACTION_RUN) {
-                context.game.player.action = ACTOR_ACTION_RUN;
-                context.game.player.animation.step = ACTOR_ANIMATION_STEP_6;
-                context.game.player.animation.tick = 0;
-            }
-        }
-    }
-}*/
+    // KEY A
+    if (context.platform.keys[GLFW_KEY_A]) xacc -= 1.0f;
+
+    // KEY S
+    if (context.platform.keys[GLFW_KEY_S]) {}
+
+    // KEY D
+    if (context.platform.keys[GLFW_KEY_D]) xacc += 1.0f;
+
+    game_actor_move(&context.game.player, xacc, jump);
+}
 
 void _game_physics_handle(actor_t *actor, collision_box_t *box) {
     if (context.game.state != GAME_STATE_PLAY) return;
@@ -1174,49 +1169,53 @@ void _game_physics_handle(actor_t *actor, collision_box_t *box) {
         // printf("beta=%f\n", beta);
 
         if (alpha < ((180.0f - beta) * -1) || alpha > (180.0f - beta)) {
-            if (box->owner) printf("COLLISION_TOP\n");
+            if (box->owner) printf("event=COLL_TOP\n");
 
-            float y = actor->position.y - box->max.y;
-            if (y > 0) actor->box.velocity.y = (y * -1.0f);
-            else {
-                actor->box.velocity = vec2(0.0f, 0.0f);
-                actor->box.lock = 0;
-                actor->box.impact = 1;
-            }
+            actor->box.velocity.y = 0.0f;
+            actor->box.lock = 0;
+            actor->box.impact = 1;
+
+            // float y = actor->position.y - box->max.y;
+            // if (y > 0) actor->box.velocity.y = (y * -1.0f);
+            // else {
+            //     actor->box.velocity.y = 0.0f;
+            //     actor->box.lock = 0;
+            //     actor->box.impact = 1;
+            // }
 
         } else if (alpha < (beta * -1) && alpha > ((180.0f - beta) * -1)) {
-            if (box->owner) printf("COLLISION_LEFT\n");
+            if (box->owner) printf("event=COLL_LEFT\n");
 
-            float x = box->min.x - actor->position.x;
-            if (x > 0) actor->box.velocity.x = (x * -1.0f);
-            else {
-                actor->box.velocity.x = 0.0f;
-                actor->box.lock = 0;
-                actor->box.impact = 1;
-            }
+            actor->box.velocity.x = 0.0f;
+            actor->box.lock = 0;
+            actor->box.impact = 1;
+
+            // float x = box->min.x - actor->position.x;
+            // if (x > 0) actor->box.velocity.x = (x * -1.0f);
+            // else {
+            //     actor->box.velocity.x = 0.0f;
+            //     actor->box.lock = 0;
+            //     actor->box.impact = 1;
+            // }
 
         } else if (alpha < beta && alpha > (beta * -1)) {
-            if (box->owner) printf("COLLISION_BOTTOM\n");
+            if (box->owner) printf("event=COLL_BOTTOM\n");
+
+            // ..
+
         } else if (alpha < (180.0f - beta) && alpha > beta) {
-            if (box->owner) printf("COLLISION_RIGHT\n");
+            if (box->owner) printf("event=COLL_RIGHT\n");
+
+            actor->box.velocity.x = 0.0f;
+            actor->box.lock = 0;
+            actor->box.impact = 1;
+
         }
 
-        // if (1) { // check if it is a bottom collision
-
-        //     // printf("COLLISION_BOTTOM\n");
-
-        //     float y = actor->position.y - box->max.y;
-        //     if (y > 0) actor->box.velocity.y = (y * -1.0f);
-        //     else {
-        //         actor->box.velocity = vec2(0.0f, 0.0f);
-        //         actor->box.lock = 0;
-        //         actor->box.impact = 1;
-        //     }
-        // }
-
     } else {
-        if (actor->box.impact && actor->box.velocity.x == 0 && actor->box.velocity.y == 0) return;
-        actor->box.velocity.y += -1;
+        if (actor->box.impact) return;
+        actor->box.velocity.y += -1.0f;
+        printf("event=NO_COLL\n");
     }
 
 }
@@ -1370,13 +1369,13 @@ void game_update(void) {
 
         if (context.ticker.framerate.timer >= 1.0f) {
             context.ticker.framerate.value = (double) context.ticker.framerate.counter / context.ticker.framerate.timer;
-            context.ticker.framerate.timer -= 1.0;
+            context.ticker.framerate.timer -= 1.0f;
             context.ticker.framerate.counter = 0;
         }
 
         // physics
-        if (context.ticker.time_between_frames > 0.25) {
-            context.ticker.time_between_frames = 0.25;
+        if (context.ticker.time_between_frames > 0.25f) {
+            context.ticker.time_between_frames = 0.25f;
         }
 
         context.ticker.physics.accumulator += context.ticker.time_between_frames;
@@ -1385,11 +1384,16 @@ void game_update(void) {
             
             // TODO save previous actors states
 
-            _game_physics_handle(&context.game.player, &context.game.level.box);
-            _game_physics_handle(&context.game.player, &context.game.enemy.box);
-
             // input
-            _game_keyboard_handle();
+            // _game_keyboard_handle();
+            _game_keyboard_qhandle();
+
+            // _game_physics_handle(&context.game.player, &context.game.level.box);
+            // _game_physics_handle(&context.game.player, &context.game.enemy.box);
+
+            context.game.player.position = vec2_add(context.game.player.position, context.game.player.box.velocity);
+            context.game.player.box.min = vec2(context.game.player.position.x, context.game.player.position.y);
+            context.game.player.box.max = vec2(context.game.player.position.x + (GAME_ACTOR_SPRITE_SCALE * 48.0f), context.game.player.position.y + (GAME_ACTOR_SPRITE_SCALE * 48.0f));
             
             // temp
             // for (uint32_t i = 0; i < GAME_LEVEL_BULLETS_MAX; i++) { // is uint32_t bad as a loop index?
