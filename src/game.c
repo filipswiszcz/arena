@@ -671,6 +671,8 @@ typedef struct {
     uint8_t side;
 } collider_t;
 
+void game_collisions_handle(actor_t *actor, rigidbody_t *rigb) {}
+
 typedef struct {
     vec2_t min, max; // offsets to parent pos
     vec2_t velocity;
