@@ -671,40 +671,9 @@ typedef struct {
     uint8_t side;
 } collider_t;
 
-// void game_collider_aabb_check(collider_t *a, collider_t *b) {
-//     return (((b->min.x <= a->max.x) && (b->max.x >= a->min.x)) && ((b->min.y <= a->max.y) && (b->max.y >= a->min.y)));
-// }
-
-// void game_collisions_handle(actor_t *actor, collider_t *b) {
-//     actor->coll.side = GAME_COLL_NONE;
-//     actor->grounded = 0;
-//     actor->pos.x += actor->rigb.vel.x; // * dt;
-
-//     if (game_collider_aabb_check(&actor->coll, b)) {
-//         if (actor->rigb.vel.x > 0) {
-//             // actor->pos.x = b;
-//             actor->collider.side |= GAME_COLL_RIGHT;
-//         } else if (actor->rigb.vel.x < 0) {
-//             actor->collider.side |= GAME_COLL_RIGHT;
-//         }
-//         actor->rigb.vel.x = 0;
-//     }
-// }
-
-// typedef struct {
-//     vec2_t min, max; // offsets to parent pos
-//     vec2_t velocity;
-//     uint8_t lock, impact;
-//     uint8_t owner;
-// } collision_box_t;
-
-// TODO make collision detection better
-    // until there is a south collision, velocity should be constantly (-ffs, 0?);
-    // ffs = free fall speed, 0? = it should always strive to reach a verticall fall
-
-// uint8_t collision_box_intersection(collision_box_t *a, collision_box_t *b) {
-//     return (((b->min.x <= a->max.x) && (b->max.x >= a->min.x)) && ((b->min.y <= a->max.y) && (b->max.y >= a->min.y)));
-// }
+uint8_t game_collider_aabb_check(collider_t *a, collider_t *b) {
+    return (b->min.x < a->max.x && b->max.x > a->min.x && b->min.y < a->max.y && b->max.y > a->min.y);
+}
 
 typedef enum {
     ACTOR_ACTION_IDLE = 0,
@@ -756,7 +725,7 @@ typedef struct {
     uint8_t fire; // it manages hand and gun | when 1, then hand and gun are going vert (animation)
 } actor_t;
 
-void game_actor_move(actor_t *actor, float xacc, uint8_t jump, float dt) {
+void game_actor_move(actor_t *actor, float xacc, uint8_t jump, uint8_t crouch, float dt) {
     actor->rigb.force.x += (xacc * 4096.0f);
     (jump && actor->grounded) ? (void) (actor->rigb.vel.y = 4096.0f, actor->grounded = 0) : (void) 0;
 
@@ -786,15 +755,7 @@ void game_actor_move(actor_t *actor, float xacc, uint8_t jump, float dt) {
     actor->rigb.force.y = 0.0f;
 }
 
-// uint8_t game_collider_aabb_check(collider_t *a, collider_t *b) {
-//     return (((b->min.x <= a->max.x) && (b->max.x >= a->min.x)) && ((b->min.y <= a->max.y) && (b->max.y >= a->min.y)));
-// }
-
-uint8_t game_collider_aabb_check(collider_t *a, collider_t *b) {
-    return (b->min.x < a->max.x && b->max.x > a->min.x && b->min.y < a->max.y && b->max.y > a->min.y);
-}
-
-void game_collisions_handle(actor_t *actor, collider_t *b, float dt) { // should have a list of all colliders
+void game_actor_colls_handle(actor_t *actor, collider_t **colls, float dt) { // should have a list of all colliders
     
     // actor->pos.x += actor->rigb.vel.x; // * dt;
     actor->position.x += actor->rigb.vel.x * dt;
@@ -803,46 +764,49 @@ void game_collisions_handle(actor_t *actor, collider_t *b, float dt) { // should
     actor->coll.side = GAME_COLL_NONE;
     actor->grounded = 0;
 
-    if (game_collider_aabb_check(&actor->coll, b)) {
-        if (actor->rigb.vel.x > 0) {
-            // actor->pos.x = b;
-            actor->position.x = b->min.x - (2 * 48.0f);
-            actor->coll.side |= GAME_COLL_RIGHT;
-        } else if (actor->rigb.vel.x < 0) {
-            actor->position.x = b->max.x;
-            actor->coll.side |= GAME_COLL_LEFT;
+    // for (uint32_t i = 0; colls[i] != NULL; i++) // works well with: collider_t *pcolls[3] = {&a, &b, NULL};
+    for (uint32_t i = 0; i < 2; i++) {
+        if (game_collider_aabb_check(&actor->coll, colls[i])) {
+            if (actor->rigb.vel.x > 0) {
+                // actor->pos.x = b;
+                actor->position.x = colls[i]->min.x - (2 * 48.0f);
+                actor->coll.side |= GAME_COLL_RIGHT;
+            } else if (actor->rigb.vel.x < 0) {
+                actor->position.x = colls[i]->max.x;
+                actor->coll.side |= GAME_COLL_LEFT;
+            }
+            actor->rigb.vel.x = 0.0f;
         }
-        actor->rigb.vel.x = 0.0f;
     }
 
     actor->position.y += actor->rigb.vel.y * dt;
     actor->coll.min = actor->position;
     actor->coll.max = vec2(actor->position.x + (2 * 48.0f), actor->position.y + (2 * 48.0f));
 
-    if (game_collider_aabb_check(&actor->coll, b)) {
-        if (actor->rigb.vel.y > 0) {
-            actor->position.y = b->min.y - (2 * 48.0f);
-            actor->coll.side |= GAME_COLL_TOP;
-        } else if (actor->rigb.vel.y < 0) {
-            actor->position.y = b->max.y;
-            actor->coll.side |= GAME_COLL_BOTTOM;
-            actor->grounded = 1;
+    for (uint32_t i = 0; i < 2; i++) {
+        if (game_collider_aabb_check(&actor->coll, colls[i])) {
+            if (actor->rigb.vel.y > 0) {
+                actor->position.y = colls[i]->min.y - (2 * 48.0f);
+                actor->coll.side |= GAME_COLL_TOP;
+            } else if (actor->rigb.vel.y < 0) {
+                actor->position.y = colls[i]->max.y;
+                actor->coll.side |= GAME_COLL_BOTTOM;
+                actor->grounded = 1;
+            }
+            actor->rigb.vel.y = 0.0f;
         }
-        actor->rigb.vel.y = 0.0f;
     }
 }
 
-
-// void game_actor_fire(actor_t *actor) {}
-
 typedef struct {
     vec2_t pos;
-    // collision_box_t box;
+    // collider_t coll;
     sprite_t sprite;
-    // current animation
     uint8_t owner, used;
     uint8_t mirror;
 } bullet_t;
+
+void game_actor_weapon_fire(actor_t *actor) {}
 
 // what i need:
 // - a list with all textures (mem arena)
@@ -1203,22 +1167,41 @@ void _game_keyboard_callback(GLFWwindow *window, int32_t key, int32_t scan, int3
 
 void _game_keyboard_handle(float dt) {
 
-    float xacc = 0.0f;
-    uint8_t jump = 0;
+    // KEY ESC
+    if (context.platform.keys[GLFW_KEY_ESCAPE]) {
+        glfwSetWindowShouldClose(context.platform.window, 1);
+    }
+
+    float pxacc = 0.0f, exacc = 0.0f;
+    uint8_t pjump = 0, ejump = 0;
+    uint8_t pcrouch = 0, ecrouch = 0;
 
     // KEY W
-    if (context.platform.keys[GLFW_KEY_W]) jump = 1;
+    if (context.platform.keys[GLFW_KEY_W]) pjump = 1;
 
     // KEY A
-    if (context.platform.keys[GLFW_KEY_A]) xacc -= 1.0f;
+    if (context.platform.keys[GLFW_KEY_A]) pxacc -= 1.0f;
 
     // KEY S
-    if (context.platform.keys[GLFW_KEY_S]) {}
+    if (context.platform.keys[GLFW_KEY_S]) pcrouch = 1;
 
     // KEY D
-    if (context.platform.keys[GLFW_KEY_D]) xacc += 1.0f;
+    if (context.platform.keys[GLFW_KEY_D]) pxacc += 1.0f;
 
-    game_actor_move(&context.game.player, xacc, jump, dt);
+    // KEY UP
+    if (context.platform.keys[GLFW_KEY_UP]) ejump = 1;
+
+    // KEY LEFT
+    if (context.platform.keys[GLFW_KEY_LEFT]) exacc -= 1.0f;
+
+    // KEY DOWN
+    if (context.platform.keys[GLFW_KEY_DOWN]) ecrouch = 1;
+
+    // KEY RIGHT
+    if (context.platform.keys[GLFW_KEY_RIGHT]) exacc += 1.0f;
+
+    game_actor_move(&context.game.player, pxacc, pjump, pcrouch, dt);
+    game_actor_move(&context.game.enemy, exacc, ejump, ecrouch, dt);
 }
 
 /*void _game_physics_handle(actor_t *actor, collision_box_t *box) {
@@ -1398,7 +1381,6 @@ void game_init(void) {
     context.game.player.coll = (collider_t) {.min = vec2(150.0f, 100.0f), .max = vec2(150.0f + (GAME_ACTOR_SPRITE_SCALE * 48.0f), 100.0f + (GAME_ACTOR_SPRITE_SCALE * 48.0f)), .side = GAME_COLL_NONE};
     context.game.player.grounded = 0;
 
-
     context.game.player.position = vec2(150.0f, 100.0f);
     // context.game.player.box = (collision_box_t) {.min = vec2(150.0f, 100.0f), .max = vec2(342.0f, 292.0f), .velocity = vec2(0.0f, 0.0f), .lock = 0, .impact = 0, .owner = 0};
     context.game.player.sprites = mem_arena_alloc(&context.arena, GAME_ACTOR_SPRITES_SIZE * sizeof(sprite_t));
@@ -1415,6 +1397,11 @@ void game_init(void) {
     sprite_init(&context.game.player.sprites[4], &context.resources.textures[5], vec2(0.0f, 0.0f), vec2(48.0f * GAME_ACTOR_SPRITE_SCALE, 48.0f * GAME_ACTOR_SPRITE_SCALE), 0.0f, vec2(0.25f, 1.0f), vec2(0.25f, 0.0f), vec3(1.0f, 1.0f, 1.0f), 0); // crouch
     sprite_init(&context.game.player.sprites[5], &context.resources.textures[6], vec2(0.0f, 0.0f), vec2(48.0f * GAME_ACTOR_SPRITE_SCALE, 48.0f * GAME_ACTOR_SPRITE_SCALE), 0.0f, vec2(0.167f, 1.0f), vec2(0.167f, 0.0f), vec3(1.0f, 1.0f, 1.0f), 0); // attack
     sprite_init(&context.game.player.sprites[6], &context.resources.textures[7], vec2(0.0f, 0.0f), vec2(48.0f * GAME_ACTOR_SPRITE_SCALE, 48.0f * GAME_ACTOR_SPRITE_SCALE), 0.0f, vec2(0.167f, 1.0f), vec2(0.167f, 0.0f), vec3(1.0f, 1.0f, 1.0f), 0); // death
+
+    context.game.enemy.pos = vec2(450.0f, 100.0f);
+    context.game.enemy.rigb = (rigidbody_t) {.vel = vec2(0.0f, 0.0f), .force = vec2(0.0f, 0.0f), .mass = 0.2f, .grav = 1.0f, .fric = 0.9f, .drag = 0.9f, .bounce = 0.1f};
+    context.game.enemy.coll = (collider_t) {.min = vec2(450.0f, 100.0f), .max = vec2(450.0f + (GAME_ACTOR_SPRITE_SCALE * 48.0f), 100.0f + (GAME_ACTOR_SPRITE_SCALE * 48.0f)), .side = GAME_COLL_NONE};
+    context.game.enemy.grounded = 0;
 
     context.game.enemy.position = vec2(450.0f, 100.0f);
     // context.game.enemy.box = (collision_box_t) {.min = vec2(450.0f, 100.0f), .max = vec2(642.0f, 292.0f), .velocity = vec2(0.0f, 0.0f), .lock = 0, .impact = 0, .owner = 1};
@@ -1471,10 +1458,13 @@ void game_update(void) {
             // TODO save previous actors states
 
             // input
-            // _game_keyboard_handle();
-
             _game_keyboard_handle(context.ticker.time_between_frames);
-            game_collisions_handle(&context.game.player, &context.game.level.b, context.ticker.time_between_frames); 
+
+            collider_t *pcolls[] = {&context.game.level.b, &context.game.enemy.coll};
+            collider_t *ecolls[] = {&context.game.level.b, &context.game.player.coll};
+            
+            game_actor_colls_handle(&context.game.player, pcolls, context.ticker.time_between_frames);
+            game_actor_colls_handle(&context.game.enemy, ecolls, context.ticker.time_between_frames);
 
             // _game_physics_handle(&context.game.player, &context.game.level.box);
             // _game_physics_handle(&context.game.player, &context.game.enemy.box);
