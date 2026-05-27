@@ -805,12 +805,12 @@ typedef struct {
     rigidbody_t rigb;
     collider_t coll;
     sprite_t sprite;
+    actor_t *shooter;
     uint8_t owner, used;
     uint8_t mirror;
 } bullet_t;
 
 void game_bullet_colls_handle(bullet_t *bullet, collider_t **colls, float dt) {
-
     bullet->pos.x += bullet->rigb.vel.x; // * dt;
     bullet->coll.min = bullet->pos;
     bullet->coll.max = vec2(bullet->pos.x + (8.0f * 2), bullet->pos.y + (4.0f * 2));
@@ -818,6 +818,11 @@ void game_bullet_colls_handle(bullet_t *bullet, collider_t **colls, float dt) {
 
     for (uint32_t i = 0; i < 2; i++) {
         if (game_collider_aabb_check(&bullet->coll, colls[i])) {
+            if (bullet->shooter->coll.min.x == colls[i]->min.x
+                && bullet->shooter->coll.min.y == colls[i]->min.y
+                && bullet->shooter->coll.max.x == colls[i]->max.x
+                && bullet->shooter->coll.max.y == colls[i]->max.y) continue;
+
             bullet->used = 0;
 
             // if (bullet->rigb.vel.x > 0) {
@@ -1249,6 +1254,7 @@ void _game_keyboard_handle(float dt) {
                 .rigb = (rigidbody_t) {.vel = vec2(0.0f, 0.0f), .force = vec2(1500.0f, 0.0f), .mass = 0.01f, .grav = 1.0f, .fric = 0.9f, .drag = 0.99f, .bounce = 0.1f},
                 .coll = (collider_t) {.min = pos, .max = vec2(pos.x + (8.0f * GAME_ACTOR_SPRITE_SCALE), pos.y + (4.0f * GAME_ACTOR_SPRITE_SCALE)), .side = GAME_COLL_NONE},
                 .sprite = context.game.level.sprites[1],
+                .shooter = &context.game.player,
                 .owner = 0,
                 .used = 1,
                 .mirror = context.game.player.mirror
@@ -1284,13 +1290,14 @@ void _game_keyboard_handle(float dt) {
             vec2_t pos = vec2(
                 context.game.enemy.mirror ? context.game.enemy.coll.min.x : context.game.enemy.coll.max.x,
                 context.game.enemy.coll.max.y - 48.0f
-            ); // from pos of the gun
+            );
 
             bullet_t bullet = {
                 .pos = pos, // pos and box has to be affected by mirror
                 .rigb = (rigidbody_t) {.vel = vec2(0.0f, 0.0f), .force = vec2(1500.0f, 0.0f), .mass = 0.01f, .grav = 1.0f, .fric = 0.9f, .drag = 0.99f, .bounce = 0.1f},
                 .coll = (collider_t) {.min = pos, .max = vec2(pos.x + (8.0f * GAME_ACTOR_SPRITE_SCALE), pos.y + (4.0f * GAME_ACTOR_SPRITE_SCALE)), .side = GAME_COLL_NONE},
                 .sprite = context.game.level.sprites[1],
+                .shooter = &context.game.enemy,
                 .owner = 1,
                 .used = 1,
                 .mirror = context.game.enemy.mirror
@@ -1581,28 +1588,10 @@ void game_update(void) {
             // input
             _game_keyboard_handle(context.ticker.time_between_frames);
 
+            // EXPERIMENTAL
             collider_t *pcolls[] = {&context.game.level.b, &context.game.enemy.coll};
             collider_t *ecolls[] = {&context.game.level.b, &context.game.player.coll};
             collider_t *bcolls[] = {&context.game.player.coll, &context.game.enemy.coll};
-
-            // EXPERIMENTAL
-            // uint32_t counter = 2;
-            // for (uint32_t i = 0; i < GAME_LEVEL_BULLETS_MAX; i++) {
-            //     if (context.game.level.bullets[i].used) counter++;
-            // }
-
-            // collider_t **bcolls = malloc(counter * sizeof(collider_t));
-            // if (bcolls != NULL) {
-                
-            //     bcolls[0] = &context.game.level.b;
-            //     bcolls[1] = &context.game.player.coll;
-                
-            //     for (uint32_t i = 2; i < counter; i++) {
-            //         bcolls[i] = &context.game.level.bullets[i].coll;
-            //     }
-            // }
-
-            // EXPERIMENTAL - END
             
             game_actor_colls_handle(&context.game.player, pcolls, context.ticker.time_between_frames);
             game_actor_colls_handle(&context.game.enemy, ecolls, context.ticker.time_between_frames);
@@ -1612,8 +1601,7 @@ void game_update(void) {
                     game_bullet_colls_handle(&context.game.level.bullets[i], bcolls, context.ticker.time_between_frames);
                 }
             }
-
-            // free(bcolls);
+            // EXPERIMENTAL - END
 
             // _game_physics_handle(&context.game.player, &context.game.level.box);
             // _game_physics_handle(&context.game.player, &context.game.enemy.box);
