@@ -718,31 +718,31 @@ typedef struct {
     sprite_t *sprites;
     // enum (or uint8_t) for current action (idle, jump, run, crouch)
     actor_action_t action;
-    actor_animation_t animation;
+    actor_animation_t animation; // mv to anim
     // actor_state_t cstate, pstate;
     uint16_t cooldown;
-    uint8_t mirror;
-    uint8_t fire; // it manages hand and gun | when 1, then hand and gun are going vert (animation)
+    uint8_t mirror; // mv to flip
+    uint8_t fire; // it manages hand and gun | when 1, then hand and gun are going vert (animation) // rm
 } actor_t;
 
 void game_actor_move(actor_t *actor, float xacc, uint8_t jump, uint8_t crouch, float dt) {
     actor->rigb.force.x += (xacc * 4096.0f);
     (jump && actor->grounded) ? (void) (actor->rigb.vel.y = 4096.0f, actor->grounded = 0) : (void) 0;
 
-    // printf("force=%f\n", actor->rigb.force.x);
-    // printf("mass=%f\n", actor->rigb.mass);
+    // printf("game_actor_move@force=%f\n", actor->rigb.force.x);
+    // printf("game_actor_move@mass=%f\n", actor->rigb.mass);
 
     vec2_t acc = vec2(
         actor->rigb.force.x / actor->rigb.mass, 
         (actor->rigb.force.y / actor->rigb.mass) + (GAME_GRAV * actor->rigb.grav)
     );
 
-    // printf("acc={%f, %f}\n", acc.x, acc.y);
+    // printf("game_actor_move@acc={%f, %f}\n", acc.x, acc.y);
 
     actor->rigb.vel.x += (acc.x * dt);
     actor->rigb.vel.y += (acc.y * dt);
 
-    // printf("pos={%f, %f}\n", actor->position.x, actor->position.y);
+    // printf("game_actor_move@pos={%f, %f}\n", actor->position.x, actor->position.y);
 
     if (actor->grounded) {
         actor->rigb.vel.x *= actor->rigb.fric;
@@ -755,7 +755,7 @@ void game_actor_move(actor_t *actor, float xacc, uint8_t jump, uint8_t crouch, f
     actor->rigb.force.y = 0.0f;
 }
 
-void game_actor_colls_handle(actor_t *actor, collider_t **colls, float dt) { // should have a list of all colliders
+void game_actor_colls_handle(actor_t *actor, collider_t **colls, float dt) {
     
     // actor->pos.x += actor->rigb.vel.x; // * dt;
     actor->position.x += actor->rigb.vel.x * dt;
@@ -763,6 +763,8 @@ void game_actor_colls_handle(actor_t *actor, collider_t **colls, float dt) { // 
     actor->coll.max = vec2(actor->position.x + (2 * 48.0f), actor->position.y + (2 * 48.0f));
     actor->coll.side = GAME_COLL_NONE;
     actor->grounded = 0;
+
+    // printf("game_actor_colls_handle@vel={%f, %f}\n", actor->rigb.vel.x, actor->rigb.vel.y);
 
     // for (uint32_t i = 0; colls[i] != NULL; i++) // works well with: collider_t *pcolls[3] = {&a, &b, NULL};
     for (uint32_t i = 0; i < 2; i++) {
@@ -810,7 +812,10 @@ typedef struct {
     uint8_t mirror;
 } bullet_t;
 
-void game_bullet_colls_handle(bullet_t *bullet, collider_t **colls, float dt) {
+void game_bullet_move(bullet_t *bullet) {}
+
+void game_bullet_colls_handle(bullet_t *bullet, collider_t **colls, float dt) { // it has to rewritten (ray betwen pos and prev pos)
+    
     bullet->pos.x += bullet->rigb.vel.x; // * dt;
     bullet->coll.min = bullet->pos;
     bullet->coll.max = vec2(bullet->pos.x + (8.0f * 2), bullet->pos.y + (4.0f * 2));
@@ -824,57 +829,10 @@ void game_bullet_colls_handle(bullet_t *bullet, collider_t **colls, float dt) {
                 && bullet->shooter->coll.max.y == colls[i]->max.y) continue;
 
             bullet->used = 0;
-
-            // if (bullet->rigb.vel.x > 0) {
-            //     // actor->pos.x = b;
-            //     // it glitches when trying to get on top of collider
-            //     bullet->pos.x = colls[i]->min.x - (2 * 48.0f);
-            //     bullet->coll.side |= GAME_COLL_RIGHT;
-            // } else if (bullet->rigb.vel.x < 0) {
-            //     bullet->pos.x = colls[i]->max.x;
-            //     bullet->coll.side |= GAME_COLL_LEFT;
-            // }
-            // bullet->rigb.vel.x = 0.0f;
         }
     }
 
-    // actor->position.y += actor->rigb.vel.y * dt;
-    // actor->coll.min = actor->position;
-    // actor->coll.max = vec2(actor->position.x + (2 * 48.0f), actor->position.y + (2 * 48.0f));
-
-    // for (uint32_t i = 0; i < 2; i++) {
-    //     if (game_collider_aabb_check(&actor->coll, colls[i])) {
-    //         if (actor->rigb.vel.y > 0) {
-    //             actor->position.y = colls[i]->min.y - (2 * 48.0f);
-    //             actor->coll.side |= GAME_COLL_TOP;
-    //         } else if (actor->rigb.vel.y < 0) {
-    //             actor->position.y = colls[i]->max.y;
-    //             actor->coll.side |= GAME_COLL_BOTTOM;
-    //             actor->grounded = 1;
-    //         }
-    //         actor->rigb.vel.y = 0.0f;
-    //     }
-    // }
-
 }
-
-void game_actor_weapon_fire(actor_t *actor) {}
-
-// what i need:
-// - a list with all textures (mem arena)
-//      - do i run through assets/ and load them all?
-//      - how do i mark them? with a name? eg "punk_weapon_rest", "punk_weapon_point"
-//      - path "assets/texture/actor/punk_idle.png"
-// - a level struct
-//      - animated background
-//      - floor (rigid body) + void
-//      - animated finish texts (like in mortal combat)
-//      - list of all projectiles>
-//          - level checks if actor is hit by any bullet from enemy actor?
-// - an actor struct
-//      - animated body (with hands and weapon)
-//      - collision and movement physics?
-//      - all ML data
 
 #define GAME_SIMULATION_FIXED_TIMESTEP 1.0f / 60.0f // 60 fps
 #define GAME_ANIMATION_FIXED_TIMESTEP 1.0f / 8.0f // 8 fps
@@ -898,7 +856,8 @@ uint8_t GAME_MEMORY[GAME_MEMORY_CAPACITY];
 typedef enum {
     GAME_STATE_LOAD = 0,
     GAME_STATE_PAUSE = 1,
-    GAME_STATE_PLAY = 2
+    GAME_STATE_PLAY = 2,
+    GAME_STATE_RESET = 3
 } game_state_t;
 
 static struct {
@@ -1218,15 +1177,28 @@ void _game_keyboard_callback(GLFWwindow *window, int32_t key, int32_t scan, int3
 }*/
 
 void _game_keyboard_handle(float dt) {
+    if (context.game.state == GAME_STATE_LOAD) return;
 
-    // KEY ESC
-    if (context.platform.keys[GLFW_KEY_ESCAPE]) {
+    // KEY Q (quit)
+    if (context.platform.keys[GLFW_KEY_Q]) {
         glfwSetWindowShouldClose(context.platform.window, 1);
+    }
+
+    // KEY P (pause)
+    if (context.platform.keys[GLFW_KEY_P]) {
+        if (context.game.state != GAME_STATE_PAUSE) context.game.state = GAME_STATE_PAUSE;
+    }
+
+    // KEY R (resume)
+    if (context.platform.keys[GLFW_KEY_R]) {
+        if (context.game.state != GAME_STATE_PLAY) context.game.state = GAME_STATE_PLAY;
     }
 
     float pxacc = 0.0f, exacc = 0.0f;
     uint8_t pjump = 0, ejump = 0;
     uint8_t pcrouch = 0, ecrouch = 0;
+
+    if (context.game.state != GAME_STATE_PLAY) return;
 
     // KEY W
     if (context.platform.keys[GLFW_KEY_W]) pjump = 1;
@@ -1436,9 +1408,9 @@ void game_init(void) {
 
     // GLEW
 #ifndef __APPLE__
-    glewExperimental = 1;
-    int32_t glew_error = glewInit();
-    ASSERT(glew_error == 0 || glew_error == 4, "GLEW_INIT_ERROR\n"); // this needs to be rethinked
+    glewExperimental = 1; // what?
+    int32_t glewerr = glewInit();
+    ASSERT(glewerr == 0 || glewerr == 4, "GLEW_INIT_ERROR\n"); // this needs to be rethinked
 #endif
 
     // OPENGL
@@ -1463,7 +1435,7 @@ void game_init(void) {
     shader_init(&context.resources.shaders[0], "shader/sprite.vs", "shader/sprite.fs");
     shader_init(&context.resources.shaders[1], "shader/crt.vs", "shader/crt.fs");
     shader_init(&context.resources.shaders[2], "shader/text.vs", "shader/text.fs");
-    shader_init(&context.resources.shaders[3], "shader/glitch.vs", "shader/glitch.fs");
+    // shader_init(&context.resources.shaders[3], "shader/glitch.vs", "shader/glitch.fs");
 
     // TODO read it auto, and search it by name (only in init)
     context.resources.textures = mem_arena_alloc(&context.arena, GAME_RESOURCES_TEXTURES_SIZE * sizeof(texture_t));
@@ -1492,7 +1464,7 @@ void game_init(void) {
     renderer_init(&context.renderer, context.resources.shaders);
 
     // GAME
-    context.game.state = GAME_STATE_PLAY;
+    context.game.state = GAME_STATE_LOAD;
     context.game.level.sprites = mem_arena_alloc(&context.arena, GAME_LEVEL_SPRITES_SIZE * sizeof(sprite_t));
     context.game.level.texts = mem_arena_alloc(&context.arena, GAME_LEVEL_TEXTS_SIZE * sizeof(text_t));
     context.game.level.bullets = mem_arena_alloc(&context.arena, GAME_LEVEL_BULLETS_MAX * sizeof(bullet_t));
@@ -1547,6 +1519,8 @@ void game_init(void) {
     sprite_init(&context.game.enemy.sprites[5], &context.resources.textures[13], vec2(0.0f, 0.0f), vec2(48.0f * GAME_ACTOR_SPRITE_SCALE, 48.0f * GAME_ACTOR_SPRITE_SCALE), 0.0f, vec2(0.167f, 1.0f), vec2(0.167f, 0.0f), vec3(1.0f, 1.0f, 1.0f), 0); // attack
     sprite_init(&context.game.enemy.sprites[6], &context.resources.textures[14], vec2(0.0f, 0.0f), vec2(48.0f * GAME_ACTOR_SPRITE_SCALE, 48.0f * GAME_ACTOR_SPRITE_SCALE), 0.0f, vec2(0.167f, 1.0f), vec2(0.167f, 0.0f), vec3(1.0f, 1.0f, 1.0f), 0); // death
 
+    context.game.state = GAME_STATE_PLAY;
+
     // TICKER
     text_init(&context.ticker.framerate.text);
     context.ticker.time_of_last_frame = glfwGetTime();
@@ -1589,36 +1563,21 @@ void game_update(void) {
             _game_keyboard_handle(context.ticker.time_between_frames);
 
             // EXPERIMENTAL
-            collider_t *pcolls[] = {&context.game.level.b, &context.game.enemy.coll};
-            collider_t *ecolls[] = {&context.game.level.b, &context.game.player.coll};
-            collider_t *bcolls[] = {&context.game.player.coll, &context.game.enemy.coll};
-            
-            game_actor_colls_handle(&context.game.player, pcolls, context.ticker.time_between_frames);
-            game_actor_colls_handle(&context.game.enemy, ecolls, context.ticker.time_between_frames);
+            if (context.game.state == GAME_STATE_PLAY) {
+                collider_t *pcolls[] = {&context.game.level.b, &context.game.enemy.coll};
+                collider_t *ecolls[] = {&context.game.level.b, &context.game.player.coll};
+                collider_t *bcolls[] = {&context.game.player.coll, &context.game.enemy.coll};
+                
+                game_actor_colls_handle(&context.game.player, pcolls, context.ticker.time_between_frames);
+                game_actor_colls_handle(&context.game.enemy, ecolls, context.ticker.time_between_frames);
 
-            for (uint32_t i = 0; i < GAME_LEVEL_BULLETS_MAX; i++) {
-                if (context.game.level.bullets[i].used) {
-                    game_bullet_colls_handle(&context.game.level.bullets[i], bcolls, context.ticker.time_between_frames);
+                for (uint32_t i = 0; i < GAME_LEVEL_BULLETS_MAX; i++) {
+                    if (context.game.level.bullets[i].used) {
+                        game_bullet_colls_handle(&context.game.level.bullets[i], bcolls, context.ticker.time_between_frames);
+                    }
                 }
             }
             // EXPERIMENTAL - END
-
-            // _game_physics_handle(&context.game.player, &context.game.level.box);
-            // _game_physics_handle(&context.game.player, &context.game.enemy.box);
-
-            // context.game.player.position = vec2_add(context.game.player.position, context.game.player.box.velocity);
-            // context.game.player.box.min = vec2(context.game.player.position.x, context.game.player.position.y);
-            // context.game.player.box.max = vec2(context.game.player.position.x + (GAME_ACTOR_SPRITE_SCALE * 48.0f), context.game.player.position.y + (GAME_ACTOR_SPRITE_SCALE * 48.0f));
-            
-            // temp
-            // for (uint32_t i = 0; i < GAME_LEVEL_BULLETS_MAX; i++) { // is uint32_t bad as a loop index?
-            //     if (context.game.level.bullets[i].used) {
-            //         printf("BULLET_POS={x=%f, y=%f}\n", context.game.level.bullets[i].pos.x, context.game.level.bullets[i].pos.y);
-            //         printf("BULLET_MIN={x=%f, y=%f}\n", context.game.level.bullets[i].box.min.x, context.game.level.bullets[i].box.min.y);
-            //         printf("BULLET_MAX={x=%f, y=%f}\n", context.game.level.bullets[i].box.max.x, context.game.level.bullets[i].box.max.y);
-            //     }
-            // }
-            // end of temp
 
             // animation
             context.ticker.animation.accumulator += GAME_SIMULATION_FIXED_TIMESTEP;
