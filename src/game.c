@@ -568,7 +568,7 @@ void _renderer_sprite_draw(renderer_t *renderer, texture_t *texture, vec4_t uv, 
     shader_set_vec2(renderer->shader, "u_Scale", vec2(uv.x, uv.y));
     shader_set_vec2(renderer->shader, "u_Offset", vec2(uv.z, uv.w));
 
-    shader_set_int(renderer->shader, "u_Mirror", mirror);
+    shader_set_int(renderer->shader, "u_Flip", mirror);
 
     shader_set_vec3(renderer->shader, "u_Color", color);
 
@@ -651,7 +651,26 @@ void renderer_draw(renderer_t *renderer, float time) { // store time in renderer
 
 // GAME
 
-#define GAME_GRAV -26000.0f
+#define GAME_SIMULATION_FIXED_TIMESTEP (1.0f / 60.0f) // 60 fps // mv to GAME_SIMULATION_FRAMERATE?
+#define GAME_ANIMATION_FIXED_TIMESTEP (1.0f / 8.0f) // 8 fps
+
+#define GAME_MEMORY_CAPACITY (64 * 1024^2) // 64 MB
+uint8_t GAME_MEMORY[GAME_MEMORY_CAPACITY];
+
+#define GAME_RESOURCES_SHADER_ARRAY_SIZE 4
+#define GAME_RESOURCES_TEXTURE_ARRAY_SIZE 16
+
+#define GAME_RENDERER_COMMAND_ARRAY_SIZE 16
+
+#define GAME_LEVEL_GRAVITY -9600.0f
+
+#define GAME_LEVEL_SPRITE_ARRAY_SIZE 4
+#define GAME_LEVEL_TEXT_ARRAY_SIZE 2
+#define GAME_LEVEL_BULLET_ARRAY_SIZE 8
+#define GAME_LEVEL_BULLET_SPEED 8
+
+#define GAME_ACTOR_SPRITE_ARRAY_SIZE 8
+#define GAME_ACTOR_SPRITE_SCALE 2
 
 typedef struct {
     vec2_t vel, force;
@@ -668,7 +687,7 @@ typedef struct {
 
 typedef struct {
     vec2_t min, max;
-    uint8_t side;
+    uint8_t mask;
 } collider_t;
 
 uint8_t game_collider_aabb_check(collider_t *a, collider_t *b) {
@@ -681,7 +700,7 @@ typedef enum {
     ACTOR_ACTION_DOUBLE_JUMP = 2,
     ACTOR_ACTION_RUN = 3,
     ACTOR_ACTION_CROUCH = 4
-} actor_action_t; // change to bit flags
+} actor_action_t;
 
 typedef struct {
     vec2_t position, size;
@@ -695,7 +714,7 @@ typedef enum {
     ACTOR_ANIMATION_STEP_3 = 3,
     ACTOR_ANIMATION_STEP_4 = 4,
     ACTOR_ANIMATION_STEP_6 = 6
-} actor_animation_step_t; // change to bit flags
+} actor_animation_step_t;
 
 typedef struct {
     actor_animation_step_t step;
@@ -703,38 +722,30 @@ typedef struct {
 } actor_animation_t;
 
 typedef struct {
-
-    // temp
     vec2_t pos;
     rigidbody_t rigb;
     collider_t coll;
 
-    uint8_t grounded;
-    // temp
-
-    vec2_t position;
-    // collision_box_t box;
-    // sprites as array? and action == index (with pos relative to actor's pose?), pos
-    sprite_t *sprites;
-    // enum (or uint8_t) for current action (idle, jump, run, crouch)
-    actor_action_t action;
+    sprite_t *sprites; // sprites as array? and action == index (with pos relative to actor's pose?), pos
+    actor_action_t action; // enum (or uint8_t) for current action (idle, jump, double jump, run, crouch)
     actor_animation_t animation; // mv to anim
     // actor_state_t cstate, pstate;
     uint16_t cooldown;
+
+    uint8_t grounded;
     uint8_t mirror; // mv to flip
-    uint8_t fire; // it manages hand and gun | when 1, then hand and gun are going vert (animation) // rm
 } actor_t;
 
 void game_actor_move(actor_t *actor, float xacc, uint8_t jump, uint8_t crouch, float dt) {
-    actor->rigb.force.x += (xacc * 4096.0f);
-    (jump && actor->grounded) ? (void) (actor->rigb.vel.y = 4096.0f, actor->grounded = 0) : (void) 0;
+    actor->rigb.force.x += (xacc * 8192.0f);
+    (jump && actor->grounded) ? (void) (actor->rigb.vel.y = 1024.0f, actor->grounded = 0) : (void) 0;
 
     // printf("game_actor_move@force=%f\n", actor->rigb.force.x);
     // printf("game_actor_move@mass=%f\n", actor->rigb.mass);
 
     vec2_t acc = vec2(
         actor->rigb.force.x / actor->rigb.mass, 
-        (actor->rigb.force.y / actor->rigb.mass) + (GAME_GRAV * actor->rigb.grav)
+        (actor->rigb.force.y / actor->rigb.mass) + (GAME_LEVEL_GRAVITY * actor->rigb.grav)
     );
 
     // printf("game_actor_move@acc={%f, %f}\n", acc.x, acc.y);
@@ -742,7 +753,7 @@ void game_actor_move(actor_t *actor, float xacc, uint8_t jump, uint8_t crouch, f
     actor->rigb.vel.x += (acc.x * dt);
     actor->rigb.vel.y += (acc.y * dt);
 
-    // printf("game_actor_move@pos={%f, %f}\n", actor->position.x, actor->position.y);
+    // printf("game_actor_move@pos={%f, %f}\n", actor->pos.x, actor->pos.y);
 
     if (actor->grounded) {
         actor->rigb.vel.x *= actor->rigb.fric;
@@ -751,55 +762,51 @@ void game_actor_move(actor_t *actor, float xacc, uint8_t jump, uint8_t crouch, f
         actor->rigb.vel.y *= actor->rigb.drag;
     }
 
+    // printf("game_actor_move@vel={%f, %f}\n", actor->rigb.vel.x, actor->rigb.vel.y);
+
     actor->rigb.force.x = 0.0f;
     actor->rigb.force.y = 0.0f;
 }
 
 void game_actor_colls_handle(actor_t *actor, collider_t **colls, float dt) {
-    
-    // actor->pos.x += actor->rigb.vel.x; // * dt;
-    actor->position.x += actor->rigb.vel.x * dt;
-    actor->coll.min = actor->position;
-    actor->coll.max = vec2(actor->position.x + (2 * 48.0f), actor->position.y + (2 * 48.0f));
-    actor->coll.side = GAME_COLL_NONE;
+    actor->pos.x += actor->rigb.vel.x * dt;
+    actor->coll.min = actor->pos;
+    actor->coll.max = vec2(actor->pos.x + (GAME_ACTOR_SPRITE_SCALE * 48.0f), actor->pos.y + (GAME_ACTOR_SPRITE_SCALE * 48.0f));
+    actor->coll.mask = GAME_COLL_NONE;
     actor->grounded = 0;
-
-    // printf("game_actor_colls_handle@vel={%f, %f}\n", actor->rigb.vel.x, actor->rigb.vel.y);
 
     // for (uint32_t i = 0; colls[i] != NULL; i++) // works well with: collider_t *pcolls[3] = {&a, &b, NULL};
     for (uint32_t i = 0; i < 2; i++) {
         if (game_collider_aabb_check(&actor->coll, colls[i])) {
             if (actor->rigb.vel.x > 0) {
-                // actor->pos.x = b;
                 // it glitches when trying to get on top of collider
-                actor->position.x = colls[i]->min.x - (2 * 48.0f);
-                actor->coll.side |= GAME_COLL_RIGHT;
+                actor->pos.x = colls[i]->min.x - (GAME_ACTOR_SPRITE_SCALE * 48.0f);
+                actor->coll.mask |= GAME_COLL_RIGHT;
             } else if (actor->rigb.vel.x < 0) {
-                actor->position.x = colls[i]->max.x;
-                actor->coll.side |= GAME_COLL_LEFT;
+                actor->pos.x = colls[i]->max.x;
+                actor->coll.mask |= GAME_COLL_LEFT;
             }
             actor->rigb.vel.x = 0.0f;
         }
     }
 
-    actor->position.y += actor->rigb.vel.y * dt;
-    actor->coll.min = actor->position;
-    actor->coll.max = vec2(actor->position.x + (2 * 48.0f), actor->position.y + (2 * 48.0f));
+    actor->pos.y += actor->rigb.vel.y * dt;
+    actor->coll.min = actor->pos;
+    actor->coll.max = vec2(actor->pos.x + (GAME_ACTOR_SPRITE_SCALE * 48.0f), actor->pos.y + (GAME_ACTOR_SPRITE_SCALE * 48.0f));
 
     for (uint32_t i = 0; i < 2; i++) {
         if (game_collider_aabb_check(&actor->coll, colls[i])) {
             if (actor->rigb.vel.y > 0) {
-                actor->position.y = colls[i]->min.y - (2 * 48.0f);
-                actor->coll.side |= GAME_COLL_TOP;
+                actor->pos.y = colls[i]->min.y - (GAME_ACTOR_SPRITE_SCALE * 48.0f);
+                actor->coll.mask |= GAME_COLL_TOP;
             } else if (actor->rigb.vel.y < 0) {
-                actor->position.y = colls[i]->max.y;
-                actor->coll.side |= GAME_COLL_BOTTOM;
+                actor->pos.y = colls[i]->max.y;
+                actor->coll.mask |= GAME_COLL_BOTTOM;
                 actor->grounded = 1;
             }
             actor->rigb.vel.y = 0.0f;
         }
     }
-
 }
 
 typedef struct {
@@ -808,18 +815,27 @@ typedef struct {
     collider_t coll;
     sprite_t sprite;
     actor_t *shooter;
-    uint8_t owner, used;
-    uint8_t mirror;
+    uint8_t used;
+    uint8_t mirror; // mv to flip
 } bullet_t;
 
-void game_bullet_move(bullet_t *bullet) {}
+void game_bullet_move(bullet_t *bullet, float dt) {
+    bullet->rigb.force.x += 16.0f;
+
+    vec2_t acc = vec2(
+        bullet->rigb.force.x / bullet->rigb.mass,
+        (bullet->rigb.force.y / bullet->rigb.mass) + (GAME_LEVEL_GRAVITY * bullet->rigb.grav)
+    );
+
+    bullet->rigb.vel.x = (bullet->rigb.vel.x + acc.x * dt) * bullet->rigb.drag;
+    bullet->rigb.vel.y = (bullet->rigb.vel.y + acc.y * dt) * bullet->rigb.drag;
+}
 
 void game_bullet_colls_handle(bullet_t *bullet, collider_t **colls, float dt) { // it has to rewritten (ray betwen pos and prev pos)
-    
-    bullet->pos.x += bullet->rigb.vel.x; // * dt;
+    bullet->pos.x += bullet->rigb.vel.x * dt;
     bullet->coll.min = bullet->pos;
-    bullet->coll.max = vec2(bullet->pos.x + (8.0f * 2), bullet->pos.y + (4.0f * 2));
-    bullet->coll.side = GAME_COLL_NONE;
+    bullet->coll.max = vec2(bullet->pos.x + (GAME_ACTOR_SPRITE_SCALE * 8.0f), bullet->pos.y + (GAME_ACTOR_SPRITE_SCALE * 4.0f));
+    bullet->coll.mask = GAME_COLL_NONE;
 
     for (uint32_t i = 0; i < 2; i++) {
         if (game_collider_aabb_check(&bullet->coll, colls[i])) {
@@ -831,27 +847,7 @@ void game_bullet_colls_handle(bullet_t *bullet, collider_t **colls, float dt) { 
             bullet->used = 0;
         }
     }
-
 }
-
-#define GAME_SIMULATION_FIXED_TIMESTEP 1.0f / 60.0f // 60 fps
-#define GAME_ANIMATION_FIXED_TIMESTEP 1.0f / 8.0f // 8 fps
-
-#define GAME_MEMORY_CAPACITY (64 * 1024 * 1024) // 64 MB
-uint8_t GAME_MEMORY[GAME_MEMORY_CAPACITY];
-
-#define GAME_RESOURCES_SHADERS_SIZE 4
-#define GAME_RESOURCES_TEXTURES_SIZE 16
-
-#define GAME_RENDERER_COMMANDS_SIZE 16
-
-#define GAME_ACTOR_SPRITES_SIZE 8
-#define GAME_ACTOR_SPRITE_SCALE 2
-
-#define GAME_LEVEL_SPRITES_SIZE 4
-#define GAME_LEVEL_TEXTS_SIZE 2
-#define GAME_LEVEL_BULLETS_MAX 8
-#define GAME_LEVEL_BULLET_SPEED 8
 
 typedef enum {
     GAME_STATE_LOAD = 0,
@@ -923,7 +919,7 @@ static struct {
 } context;
 
 void _game_win32_icon_init(void) {
-    char *path = "assets/icon.png";
+    char *path = "res/texture/icon.png";
     int32_t width, height, channels;
     unsigned char *pixels = stbi_load(path, &width, &height, &channels, 0);
     ASSERT(pixels, "ICON_READ_ERROR: %s", path);
@@ -1122,7 +1118,7 @@ void _game_keyboard_callback(GLFWwindow *window, int32_t key, int32_t scan, int3
                 .mirror = context.game.player.mirror
             };
 
-            for (uint32_t i = 0; i < GAME_LEVEL_BULLETS_MAX; i++) { // is uint32_t bad as a loop index?
+            for (uint32_t i = 0; i < GAME_LEVEL_BULLET_ARRAY_SIZE; i++) { // is uint32_t bad as a loop index?
                 if (!context.game.level.bullets[i].used) {
                     context.game.level.bullets[i] = bullet;
                     break;
@@ -1148,7 +1144,7 @@ void _game_keyboard_callback(GLFWwindow *window, int32_t key, int32_t scan, int3
                 .mirror = context.game.enemy.mirror
             };
 
-            for (uint32_t i = 0; i < GAME_LEVEL_BULLETS_MAX; i++) {
+            for (uint32_t i = 0; i < GAME_LEVEL_BULLET_ARRAY_SIZE; i++) {
                 if (!context.game.level.bullets[i].used) {
                     context.game.level.bullets[i] = bullet;
                     break;
@@ -1162,7 +1158,7 @@ void _game_keyboard_callback(GLFWwindow *window, int32_t key, int32_t scan, int3
     if (context.game.player.cooldown > 0) context.game.player.cooldown--;
     if (context.game.enemy.cooldown > 0) context.game.enemy.cooldown--;
 
-    for (uint32_t i = 0; i < GAME_LEVEL_BULLETS_MAX; i++) {
+    for (uint32_t i = 0; i < GAME_LEVEL_BULLET_ARRAY_SIZE; i++) {
         if (context.game.level.bullets[i].used) {
             if (context.game.level.bullets[i].pos.x < 0 || context.game.level.bullets[i].pos.x > WINDOW_WIDTH) {
                 context.game.level.bullets[i].used = 0;
@@ -1194,11 +1190,21 @@ void _game_keyboard_handle(float dt) {
         if (context.game.state != GAME_STATE_PLAY) context.game.state = GAME_STATE_PLAY;
     }
 
+    // KEY ESC (reset)
+    if (context.platform.keys[GLFW_KEY_ESCAPE]) {
+        if (context.game.state != GAME_STATE_RESET) {
+            context.game.state = GAME_STATE_RESET;
+            // move to spawn pos
+            // progress ML
+            context.game.state = GAME_STATE_PLAY; // it will break in that instance (ESC will be called constantly until human takes the finger from the key)
+        }
+    }
+
+    if (context.game.state != GAME_STATE_PLAY) return;
+
     float pxacc = 0.0f, exacc = 0.0f;
     uint8_t pjump = 0, ejump = 0;
     uint8_t pcrouch = 0, ecrouch = 0;
-
-    if (context.game.state != GAME_STATE_PLAY) return;
 
     // KEY W
     if (context.platform.keys[GLFW_KEY_W]) pjump = 1;
@@ -1223,16 +1229,15 @@ void _game_keyboard_handle(float dt) {
 
             bullet_t bullet = {
                 .pos = pos, // pos and box has to be affected by mirror
-                .rigb = (rigidbody_t) {.vel = vec2(0.0f, 0.0f), .force = vec2(1500.0f, 0.0f), .mass = 0.01f, .grav = 1.0f, .fric = 0.9f, .drag = 0.99f, .bounce = 0.1f},
-                .coll = (collider_t) {.min = pos, .max = vec2(pos.x + (8.0f * GAME_ACTOR_SPRITE_SCALE), pos.y + (4.0f * GAME_ACTOR_SPRITE_SCALE)), .side = GAME_COLL_NONE},
+                .rigb = (rigidbody_t) {.vel = vec2(0.0f, 0.0f), .force = vec2(2048.0f, 0.0f), .mass = 0.01f, .grav = 1.0f, .fric = 0.9f, .drag = 0.99f, .bounce = 0.1f},
+                .coll = (collider_t) {.min = pos, .max = vec2(pos.x + (GAME_ACTOR_SPRITE_SCALE * 8.0f), pos.y + (GAME_ACTOR_SPRITE_SCALE * 4.0f)), .mask = GAME_COLL_NONE},
                 .sprite = context.game.level.sprites[1],
                 .shooter = &context.game.player,
-                .owner = 0,
                 .used = 1,
                 .mirror = context.game.player.mirror
             };
 
-            for (uint32_t i = 0; i < GAME_LEVEL_BULLETS_MAX; i++) { // is uint32_t bad as a loop index?
+            for (uint32_t i = 0; i < GAME_LEVEL_BULLET_ARRAY_SIZE; i++) { // is uint32_t bad as a loop index?
                 if (!context.game.level.bullets[i].used) {
                     context.game.level.bullets[i] = bullet; break;
                 }
@@ -1266,16 +1271,15 @@ void _game_keyboard_handle(float dt) {
 
             bullet_t bullet = {
                 .pos = pos, // pos and box has to be affected by mirror
-                .rigb = (rigidbody_t) {.vel = vec2(0.0f, 0.0f), .force = vec2(1500.0f, 0.0f), .mass = 0.01f, .grav = 1.0f, .fric = 0.9f, .drag = 0.99f, .bounce = 0.1f},
-                .coll = (collider_t) {.min = pos, .max = vec2(pos.x + (8.0f * GAME_ACTOR_SPRITE_SCALE), pos.y + (4.0f * GAME_ACTOR_SPRITE_SCALE)), .side = GAME_COLL_NONE},
+                .rigb = (rigidbody_t) {.vel = vec2(0.0f, 0.0f), .force = vec2(2048.0f, 0.0f), .mass = 0.01f, .grav = 1.0f, .fric = 0.9f, .drag = 0.99f, .bounce = 0.4f},
+                .coll = (collider_t) {.min = pos, .max = vec2(pos.x + (GAME_ACTOR_SPRITE_SCALE * 8.0f), pos.y + (GAME_ACTOR_SPRITE_SCALE * 4.0f)), .mask = GAME_COLL_NONE},
                 .sprite = context.game.level.sprites[1],
                 .shooter = &context.game.enemy,
-                .owner = 1,
                 .used = 1,
                 .mirror = context.game.enemy.mirror
             };
 
-            for (uint32_t i = 0; i < GAME_LEVEL_BULLETS_MAX; i++) { // is uint32_t bad as a loop index?
+            for (uint32_t i = 0; i < GAME_LEVEL_BULLET_ARRAY_SIZE; i++) { // is uint32_t bad as a loop index?
                 if (!context.game.level.bullets[i].used) {
                     context.game.level.bullets[i] = bullet; break;
                 }
@@ -1293,97 +1297,20 @@ void _game_keyboard_handle(float dt) {
     if (context.game.enemy.cooldown > 0) context.game.enemy.cooldown--;
 
     // movement should be handled in game_bullet_move or smth like that
-    for (uint32_t i = 0; i < GAME_LEVEL_BULLETS_MAX; i++) {
+    for (uint32_t i = 0; i < GAME_LEVEL_BULLET_ARRAY_SIZE; i++) {
         if (context.game.level.bullets[i].used) {
             if (context.game.level.bullets[i].pos.x < 0 || context.game.level.bullets[i].pos.x > WINDOW_WIDTH) {
                 context.game.level.bullets[i].used = 0;
             } else {
-                context.game.level.bullets[i].pos = vec2_add(context.game.level.bullets[i].pos, vec2(context.game.level.bullets[i].mirror ? -2.0f : 2.0f, 0.0f));
-                context.game.level.bullets[i].coll.min = vec2_add(context.game.level.bullets[i].coll.min, vec2(context.game.level.bullets[i].mirror ? -2.0f : 2.0f, 0.0f));
-                context.game.level.bullets[i].coll.max = vec2_add(context.game.level.bullets[i].coll.max, vec2(context.game.level.bullets[i].mirror ? -2.0f : 2.0f, 0.0f));
+                game_bullet_move(&context.game.level.bullets[i], dt);
+                // context.game.level.bullets[i].pos = vec2_add(context.game.level.bullets[i].pos, vec2(context.game.level.bullets[i].mirror ? -2.0f : 2.0f, 0.0f));
+                // context.game.level.bullets[i].coll.min = vec2_add(context.game.level.bullets[i].coll.min, vec2(context.game.level.bullets[i].mirror ? -2.0f : 2.0f, 0.0f));
+                // context.game.level.bullets[i].coll.max = vec2_add(context.game.level.bullets[i].coll.max, vec2(context.game.level.bullets[i].mirror ? -2.0f : 2.0f, 0.0f));
             }
         }
     }
 
 }
-
-/*void _game_physics_handle(actor_t *actor, collision_box_t *box) {
-    if (context.game.state != GAME_STATE_PLAY) return;
-
-    // if (actor->box.impact && actor->box.velocity.x == 0 && actor->box.velocity.y == 0) return;
-
-    vec2_t prepos = vec2_add(actor->position, actor->box.velocity);
-    vec2_t premin = vec2(prepos.x, prepos.y);
-    vec2_t premax = vec2(prepos.x + (48.0f * GAME_ACTOR_SPRITE_SCALE), prepos.y + (48.0f * GAME_ACTOR_SPRITE_SCALE));
-
-    int8_t coll = (((premax.x >= box->min.x) && (premin.x <= box->max.x)) 
-        && ((premax.y >= box->min.y) && (premin.y <= box->max.y)));
-
-    if (coll) {
-
-        vec2_t acpos = vec2(premin.x + ((premax.x - premin.x) / 2), premin.y + ((premax.y - premin.y) / 2));
-        vec2_t bcpos = vec2(box->min.x + ((box->max.x - box->min.x) / 2), box->min.y + ((box->max.y - box->min.y) / 2));
-
-        float opp = bcpos.y - acpos.y;
-        float adj = bcpos.x - acpos.x;
-
-        float alpha = 180.0f - fmodf((roundf(90.0f - float_deg(atan2f(opp, adj))) + 180.0f), 360.0f);
-        // printf("alpha=%f\n", alpha);
-
-        float beta = float_deg(atanf((bcpos.x - box->min.x) / (box->max.y - bcpos.y)));
-        // printf("beta=%f\n", beta);
-
-        if (alpha < ((180.0f - beta) * -1) || alpha > (180.0f - beta)) {
-            if (box->owner) printf("event=COLL_TOP\n");
-
-            actor->box.velocity.y = 0.0f;
-            actor->box.lock = 0;
-            actor->box.impact = 1;
-
-            // float y = actor->position.y - box->max.y;
-            // if (y > 0) actor->box.velocity.y = (y * -1.0f);
-            // else {
-            //     actor->box.velocity.y = 0.0f;
-            //     actor->box.lock = 0;
-            //     actor->box.impact = 1;
-            // }
-
-        } else if (alpha < (beta * -1) && alpha > ((180.0f - beta) * -1)) {
-            if (box->owner) printf("event=COLL_LEFT\n");
-
-            actor->box.velocity.x = 0.0f;
-            actor->box.lock = 0;
-            actor->box.impact = 1;
-
-            // float x = box->min.x - actor->position.x;
-            // if (x > 0) actor->box.velocity.x = (x * -1.0f);
-            // else {
-            //     actor->box.velocity.x = 0.0f;
-            //     actor->box.lock = 0;
-            //     actor->box.impact = 1;
-            // }
-
-        } else if (alpha < beta && alpha > (beta * -1)) {
-            if (box->owner) printf("event=COLL_BOTTOM\n");
-
-            // ..
-
-        } else if (alpha < (180.0f - beta) && alpha > beta) {
-            if (box->owner) printf("event=COLL_RIGHT\n");
-
-            actor->box.velocity.x = 0.0f;
-            actor->box.lock = 0;
-            actor->box.impact = 1;
-
-        }
-
-    } else {
-        if (actor->box.impact) return;
-        actor->box.velocity.y += -1.0f;
-        printf("event=NO_COLL\n");
-    }
-
-}*/
 
 void game_init(void) {
 
@@ -1431,47 +1358,47 @@ void game_init(void) {
     mem_arena_init(&context.arena, &GAME_MEMORY, GAME_MEMORY_CAPACITY);
 
     // RESOURCES
-    context.resources.shaders = mem_arena_alloc(&context.arena, GAME_RESOURCES_SHADERS_SIZE * sizeof(shader_t));
-    shader_init(&context.resources.shaders[0], "shader/sprite.vs", "shader/sprite.fs");
-    shader_init(&context.resources.shaders[1], "shader/crt.vs", "shader/crt.fs");
-    shader_init(&context.resources.shaders[2], "shader/text.vs", "shader/text.fs");
-    // shader_init(&context.resources.shaders[3], "shader/glitch.vs", "shader/glitch.fs");
+    context.resources.shaders = mem_arena_alloc(&context.arena, GAME_RESOURCES_SHADER_ARRAY_SIZE * sizeof(shader_t));
+    shader_init(&context.resources.shaders[0], "res/shader/sprite.vs", "res/shader/sprite.fs");
+    shader_init(&context.resources.shaders[1], "res/shader/crt.vs", "res/shader/crt.fs");
+    shader_init(&context.resources.shaders[2], "res/shader/text.vs", "res/shader/text.fs");
+    // shader_init(&context.resources.shaders[3], "res/shader/glitch.vs", "res/shader/glitch.fs");
 
     // TODO read it auto, and search it by name (only in init)
-    context.resources.textures = mem_arena_alloc(&context.arena, GAME_RESOURCES_TEXTURES_SIZE * sizeof(texture_t));
-    texture_init(&context.resources.textures[0], "assets/texture/level/tile.png");
+    context.resources.textures = mem_arena_alloc(&context.arena, GAME_RESOURCES_TEXTURE_ARRAY_SIZE * sizeof(texture_t));
+    texture_init(&context.resources.textures[0], "res/texture/level/tile.png");
 
-    texture_init(&context.resources.textures[1], "assets/texture/player/body/punk_idle.png");
-    texture_init(&context.resources.textures[2], "assets/texture/player/body/punk_jump.png");
-    texture_init(&context.resources.textures[3], "assets/texture/player/body/punk_doublejump.png");
-    texture_init(&context.resources.textures[4], "assets/texture/player/body/punk_run.png");
-    texture_init(&context.resources.textures[5], "assets/texture/player/body/punk_crouch.png");
-    texture_init(&context.resources.textures[6], "assets/texture/player/body/punk_attack.png");
-    texture_init(&context.resources.textures[7], "assets/texture/player/body/punk_death.png");
+    texture_init(&context.resources.textures[1], "res/texture/player/body/punk_idle.png");
+    texture_init(&context.resources.textures[2], "res/texture/player/body/punk_jump.png");
+    texture_init(&context.resources.textures[3], "res/texture/player/body/punk_doublejump.png");
+    texture_init(&context.resources.textures[4], "res/texture/player/body/punk_run.png");
+    texture_init(&context.resources.textures[5], "res/texture/player/body/punk_crouch.png");
+    texture_init(&context.resources.textures[6], "res/texture/player/body/punk_attack.png");
+    texture_init(&context.resources.textures[7], "res/texture/player/body/punk_death.png");
 
-    texture_init(&context.resources.textures[8], "assets/texture/enemy/body/cyborg_idle.png"); 
-    texture_init(&context.resources.textures[9], "assets/texture/enemy/body/cyborg_jump.png");
-    texture_init(&context.resources.textures[10], "assets/texture/enemy/body/cyborg_doublejump.png");
-    texture_init(&context.resources.textures[11], "assets/texture/enemy/body/cyborg_run.png");
-    // texture_init(&context.resources.textures[12], "assets/texture/enemy/body/cyborg_crouch.png");
-    texture_init(&context.resources.textures[13], "assets/texture/enemy/body/cyborg_attack.png");
-    texture_init(&context.resources.textures[14], "assets/texture/enemy/body/cyborg_death.png");
+    texture_init(&context.resources.textures[8], "res/texture/enemy/body/cyborg_idle.png"); 
+    texture_init(&context.resources.textures[9], "res/texture/enemy/body/cyborg_jump.png");
+    texture_init(&context.resources.textures[10], "res/texture/enemy/body/cyborg_doublejump.png");
+    texture_init(&context.resources.textures[11], "res/texture/enemy/body/cyborg_run.png");
+    // texture_init(&context.resources.textures[12], "res/texture/enemy/body/cyborg_crouch.png");
+    texture_init(&context.resources.textures[13], "res/texture/enemy/body/cyborg_attack.png");
+    texture_init(&context.resources.textures[14], "res/texture/enemy/body/cyborg_death.png");
 
-    texture_init(&context.resources.textures[15], "assets/texture/bullet.png");
+    texture_init(&context.resources.textures[15], "res/texture/bullet.png");
 
     // RENDERER
-    context.renderer.frame.commands = mem_arena_alloc(&context.arena, GAME_RENDERER_COMMANDS_SIZE * sizeof(command_t));
+    context.renderer.frame.commands = mem_arena_alloc(&context.arena, GAME_RENDERER_COMMAND_ARRAY_SIZE * sizeof(command_t));
     renderer_init(&context.renderer, context.resources.shaders);
 
     // GAME
     context.game.state = GAME_STATE_LOAD;
-    context.game.level.sprites = mem_arena_alloc(&context.arena, GAME_LEVEL_SPRITES_SIZE * sizeof(sprite_t));
-    context.game.level.texts = mem_arena_alloc(&context.arena, GAME_LEVEL_TEXTS_SIZE * sizeof(text_t));
-    context.game.level.bullets = mem_arena_alloc(&context.arena, GAME_LEVEL_BULLETS_MAX * sizeof(bullet_t));
-    for (uint32_t i = 0; i < GAME_LEVEL_BULLETS_MAX; i++) context.game.level.bullets[i] = (bullet_t) {0}; // is there a cooler way to init this?
+    context.game.level.sprites = mem_arena_alloc(&context.arena, GAME_LEVEL_SPRITE_ARRAY_SIZE * sizeof(sprite_t));
+    context.game.level.texts = mem_arena_alloc(&context.arena, GAME_LEVEL_TEXT_ARRAY_SIZE * sizeof(text_t));
+    context.game.level.bullets = mem_arena_alloc(&context.arena, GAME_LEVEL_BULLET_ARRAY_SIZE * sizeof(bullet_t));
+    for (uint32_t i = 0; i < GAME_LEVEL_BULLET_ARRAY_SIZE; i++) context.game.level.bullets[i] = (bullet_t) {0}; // is there a cooler way to init this?
 
     // level
-    context.game.level.b = (collider_t) {.min = vec2(0.0f, 0.0f), .max = vec2(WINDOW_WIDTH, (WINDOW_HEIGHT / 12.0f)), .side = GAME_COLL_NONE};
+    context.game.level.b = (collider_t) {.min = vec2(0.0f, 0.0f), .max = vec2(WINDOW_WIDTH, (WINDOW_HEIGHT / 12.0f)), .mask = GAME_COLL_NONE};
 
     sprite_init(&context.game.level.sprites[0], &context.resources.textures[0], vec2(0.0f, 0.0f), vec2((float) WINDOW_WIDTH, 50.0f), 0.0f, vec2(1.0f, 1.0f), vec2(0.0f, 0.0f), vec3(1.0f, 1.0f, 1.0f), 0); // tile
     sprite_init(&context.game.level.sprites[1], &context.resources.textures[15], vec2(0.0f, 0.0f), vec2(6.0f * GAME_ACTOR_SPRITE_SCALE, 6.0f * GAME_ACTOR_SPRITE_SCALE), 0.0f, vec2(1.0f, 1.0f), vec2(0.0f, 0.0f), vec3(1.0f, 1.0f, 1.0f), 0); // bullet
@@ -1479,16 +1406,14 @@ void game_init(void) {
 
     // actor
     context.game.player.pos = vec2(150.0f, 100.0f);
-    context.game.player.rigb = (rigidbody_t) {.vel = vec2(0.0f, 0.0f), .force = vec2(0.0f, 0.0f), .mass = 0.2f, .grav = 1.0f, .fric = 0.9f, .drag = 0.9f, .bounce = 0.1f};
-    context.game.player.coll = (collider_t) {.min = vec2(150.0f, 100.0f), .max = vec2(150.0f + (GAME_ACTOR_SPRITE_SCALE * 48.0f), 100.0f + (GAME_ACTOR_SPRITE_SCALE * 48.0f)), .side = GAME_COLL_NONE};
+    context.game.player.rigb = (rigidbody_t) {.vel = vec2(0.0f, 0.0f), .force = vec2(0.0f, 0.0f), .mass = 1.0f, .grav = 1.0f, .fric = 0.9f, .drag = 0.99f, .bounce = 0.0f};
+    context.game.player.coll = (collider_t) {.min = vec2(150.0f, 100.0f), .max = vec2(150.0f + (GAME_ACTOR_SPRITE_SCALE * 48.0f), 100.0f + (GAME_ACTOR_SPRITE_SCALE * 48.0f)), .mask = GAME_COLL_NONE};
     context.game.player.grounded = 0;
 
-    context.game.player.position = vec2(150.0f, 100.0f);
-    context.game.player.sprites = mem_arena_alloc(&context.arena, GAME_ACTOR_SPRITES_SIZE * sizeof(sprite_t));
+    context.game.player.sprites = mem_arena_alloc(&context.arena, GAME_ACTOR_SPRITE_ARRAY_SIZE * sizeof(sprite_t));
     context.game.player.action = ACTOR_ACTION_IDLE;
     context.game.player.animation = (actor_animation_t) {.step = ACTOR_ANIMATION_STEP_4, .tick = 0, .lock = 0};
     context.game.player.mirror = 0;
-    context.game.player.fire = 0;
 
     // sprite_init(&sprite, "punk_run", ..);
     sprite_init(&context.game.player.sprites[0], &context.resources.textures[1], vec2(0.0f, 0.0f), vec2(48.0f * GAME_ACTOR_SPRITE_SCALE, 48.0f * GAME_ACTOR_SPRITE_SCALE), 0.0f, vec2(0.25f, 1.0f), vec2(0.0f, 0.0f), vec3(1.0f, 1.0f, 1.0f), 0); // idle
@@ -1500,16 +1425,14 @@ void game_init(void) {
     sprite_init(&context.game.player.sprites[6], &context.resources.textures[7], vec2(0.0f, 0.0f), vec2(48.0f * GAME_ACTOR_SPRITE_SCALE, 48.0f * GAME_ACTOR_SPRITE_SCALE), 0.0f, vec2(0.167f, 1.0f), vec2(0.167f, 0.0f), vec3(1.0f, 1.0f, 1.0f), 0); // death
 
     context.game.enemy.pos = vec2(450.0f, 100.0f);
-    context.game.enemy.rigb = (rigidbody_t) {.vel = vec2(0.0f, 0.0f), .force = vec2(0.0f, 0.0f), .mass = 0.2f, .grav = 1.0f, .fric = 0.9f, .drag = 0.9f, .bounce = 0.1f};
-    context.game.enemy.coll = (collider_t) {.min = vec2(450.0f, 100.0f), .max = vec2(450.0f + (GAME_ACTOR_SPRITE_SCALE * 48.0f), 100.0f + (GAME_ACTOR_SPRITE_SCALE * 48.0f)), .side = GAME_COLL_NONE};
+    context.game.enemy.rigb = (rigidbody_t) {.vel = vec2(0.0f, 0.0f), .force = vec2(0.0f, 0.0f), .mass = 1.0f, .grav = 1.0f, .fric = 0.9f, .drag = 0.99f, .bounce = 0.0f};
+    context.game.enemy.coll = (collider_t) {.min = vec2(450.0f, 100.0f), .max = vec2(450.0f + (GAME_ACTOR_SPRITE_SCALE * 48.0f), 100.0f + (GAME_ACTOR_SPRITE_SCALE * 48.0f)), .mask = GAME_COLL_NONE};
     context.game.enemy.grounded = 0;
 
-    context.game.enemy.position = vec2(450.0f, 100.0f);
-    context.game.enemy.sprites = mem_arena_alloc(&context.arena, GAME_ACTOR_SPRITES_SIZE * sizeof(sprite_t));
+    context.game.enemy.sprites = mem_arena_alloc(&context.arena, GAME_ACTOR_SPRITE_ARRAY_SIZE * sizeof(sprite_t));
     context.game.enemy.action = ACTOR_ACTION_IDLE;
     context.game.enemy.animation = (actor_animation_t) {.step = ACTOR_ANIMATION_STEP_4, .tick = 0, .lock = 0};
     context.game.enemy.mirror = 1;
-    context.game.enemy.fire = 0;
 
     sprite_init(&context.game.enemy.sprites[0], &context.resources.textures[8], vec2(0.0f, 0.0f), vec2(48.0f * GAME_ACTOR_SPRITE_SCALE, 48.0f * GAME_ACTOR_SPRITE_SCALE), 0.0f, vec2(0.25f, 1.0f), vec2(0.0f, 0.0f), vec3(1.0f, 1.0f, 1.0f), 0); // idle
     sprite_init(&context.game.enemy.sprites[1], &context.resources.textures[9], vec2(0.0f, 0.0f), vec2(48.0f * GAME_ACTOR_SPRITE_SCALE, 48.0f * GAME_ACTOR_SPRITE_SCALE), 0.0f, vec2(0.25f, 1.0f), vec2(0.25f, 0.0f), vec3(1.0f, 1.0f, 1.0f), 0); // jump
@@ -1571,7 +1494,7 @@ void game_update(void) {
                 game_actor_colls_handle(&context.game.player, pcolls, context.ticker.time_between_frames);
                 game_actor_colls_handle(&context.game.enemy, ecolls, context.ticker.time_between_frames);
 
-                for (uint32_t i = 0; i < GAME_LEVEL_BULLETS_MAX; i++) {
+                for (uint32_t i = 0; i < GAME_LEVEL_BULLET_ARRAY_SIZE; i++) {
                     if (context.game.level.bullets[i].used) {
                         game_bullet_colls_handle(&context.game.level.bullets[i], bcolls, context.ticker.time_between_frames);
                     }
@@ -1615,7 +1538,7 @@ void game_update(void) {
             .mirror = 0
         });
 
-        for (uint32_t i = 0; i < GAME_LEVEL_BULLETS_MAX; i++) {
+        for (uint32_t i = 0; i < GAME_LEVEL_BULLET_ARRAY_SIZE; i++) {
             if (context.game.level.bullets[i].used) {
                 renderer_frame_command_push(&context.renderer, (command_t) {
                     .texture = context.game.level.sprites[1].texture,
@@ -1625,7 +1548,7 @@ void game_update(void) {
                     .rot = context.game.level.sprites[1].rot,
                     .color = context.game.level.sprites[1].color,
                     .zorder = 3,
-                    .mirror = (context.game.level.bullets[i].owner ? context.game.enemy.mirror : context.game.player.mirror)
+                    .mirror = context.game.level.bullets[i].shooter->mirror
                 });
             }
         }
@@ -1633,7 +1556,7 @@ void game_update(void) {
         renderer_frame_command_push(&context.renderer, (command_t) {
             .texture = context.game.player.sprites[context.game.player.action].texture, 
             .uv = {.scale = context.game.player.sprites[context.game.player.action].scale, .offset = context.game.player.sprites[context.game.player.action].offset}, 
-            .pos = vec2_add(context.game.player.position, context.game.player.sprites[context.game.player.action].pos), 
+            .pos = vec2_add(context.game.player.pos, context.game.player.sprites[context.game.player.action].pos), 
             .size = context.game.player.sprites[context.game.player.action].size,
             .rot = context.game.player.sprites[context.game.player.action].rot,
             .color = context.game.player.sprites[context.game.player.action].color,
@@ -1644,7 +1567,7 @@ void game_update(void) {
         renderer_frame_command_push(&context.renderer, (command_t) {
             .texture = context.game.enemy.sprites[context.game.enemy.action].texture, 
             .uv = {.scale = context.game.enemy.sprites[context.game.enemy.action].scale, .offset = context.game.enemy.sprites[context.game.enemy.action].offset}, 
-            .pos = vec2_add(context.game.enemy.position, context.game.enemy.sprites[context.game.enemy.action].pos), 
+            .pos = vec2_add(context.game.enemy.pos, context.game.enemy.sprites[context.game.enemy.action].pos), 
             .size = context.game.enemy.sprites[context.game.enemy.action].size,
             .rot = context.game.enemy.sprites[context.game.enemy.action].rot,
             .color = context.game.enemy.sprites[context.game.enemy.action].color,
