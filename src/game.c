@@ -27,11 +27,13 @@
 
 // UTIL
 
+#ifndef __APPLE__
 float random(void) {
     static uint8_t init = 0;
     if (!init) {srand((unsigned) time(NULL)); init = 1;}
     return (float) rand() / ((float) RAND_MAX + 1.0f);
 }
+#endif
 
 // SHADER
 
@@ -1321,6 +1323,7 @@ void game_init(void) {
     glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
 #ifdef __APPLE__
     glfwWindowHint(GLFW_OPENGL_FORWARD_COMPAT, GL_TRUE);
+    glfwWindowHint(GLFW_COCOA_RETINA_FRAMEBUFFER, GL_FALSE);
 #endif
     glfwWindowHint(GLFW_RESIZABLE, GL_FALSE);
 
@@ -1450,8 +1453,8 @@ void game_init(void) {
     context.ticker.time_of_last_frame = glfwGetTime();
     context.ticker.framerate.text.shader = &context.resources.shaders[2]; // text
 
-    // printf("GAME_MEMORY: Used %.4f MB / %.2f MB (%.1f%%)\n", ((float) (context.arena.used) / (1024.0f * 1024.0f)), 
-    //     ((float) (context.arena.capacity) / (1024.0f * 1024.0f)), (double) context.arena.used / (double) context.arena.capacity * 100.0);
+    printf("GAME_MEMORY: Used %.4f MB / %.2f MB (%.1f%%)\n", ((float) (context.arena.used) / (1024.0f * 1024.0f)), 
+        ((float) (context.arena.capacity) / (1024.0f * 1024.0f)), (double) context.arena.used / (double) context.arena.capacity * 100.0);
 }
 
 void game_update(void) {
