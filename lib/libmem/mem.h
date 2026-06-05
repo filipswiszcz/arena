@@ -1,9 +1,10 @@
 #ifndef __LIBMEM__
 #define __LIBMEM__
 
-#include <stddef.h>
 #if defined(__cplusplus)
     #include <cstddef>
+#else
+    #include <stddef.h>
 #endif
 #include <stdint.h>
 #include <stdio.h>

@@ -6,6 +6,7 @@
 
 #include <libmath/math.h>
 #include <libmem/mem.h>
+#include <libml/ml.h>
 
 #define STB_IMAGE_IMPLEMENTATION
 #include <stb/stb_image.h>
@@ -21,7 +22,7 @@
 
 #define WINDOW_WIDTH 800
 #define WINDOW_HEIGHT 600
-#define WINDOW_NAME "BattleArena 2D (Build v0.0.21)"
+#define WINDOW_NAME "BattleArena 2D (Build v0.0.22)"
 
 #define ASSERT(_e, ...) if (!(_e)) {fprintf(stderr, __VA_ARGS__); exit(1);}
 
@@ -647,7 +648,7 @@ uint8_t GAME_MEMORY[GAME_MEMORY_CAPACITY];
 
 #define GAME_RENDERER_COMMAND_ARRAY_SIZE 16
 
-#define GAME_LEVEL_GRAVITY -9600.0f
+#define GAME_LEVEL_GRAVITY -19200.0f
 
 #define GAME_LEVEL_SPRITE_ARRAY_SIZE 4
 #define GAME_LEVEL_TEXT_ARRAY_SIZE 2
@@ -923,8 +924,6 @@ void _game_win32_icon_init(void) {
     stbi_image_free(pixels);
 }
 
-void _game_macos_icon_init(void) {}
-
 void _game_keyboard_callback(GLFWwindow *window, int32_t key, int32_t scan, int32_t action, int32_t mode) {
     if (key > -1 && key < 512) {
         if (action == GLFW_PRESS) context.platform.keys[key] = 1;
@@ -1184,11 +1183,11 @@ void game_actor_move(actor_t *actor, float xacc, uint8_t jump, uint8_t crouch) {
     actor->rigb.force.x += (xacc * 16384.0f);
 
     if (jump && actor->grounded) {
-        actor->rigb.vel.y = 2048.0f;
+        actor->rigb.vel.y = 3072.0f;
         actor->jumped = 1;
         actor->grounded = 0;
     } else if (jump && actor->jumped == 1) {
-        actor->rigb.vel.y = 2048.0f;
+        actor->rigb.vel.y = 4096.0f;
         actor->jumped = 2;
     }
 
