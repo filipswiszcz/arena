@@ -717,7 +717,7 @@ typedef struct {
     // actor_state_t cstate, pstate;
     uint16_t cooldown;
 
-    uint8_t grounded;
+    uint8_t jumped, grounded;
     uint8_t flip;
 } actor_t;
 
@@ -731,7 +731,15 @@ void game_actor_move(actor_t *actor, float xacc, uint8_t jump, uint8_t crouch, f
     else if (xacc > 0) actor->flip = 0;
 
     actor->rigb.force.x += (xacc * 16384.0f);
-    (jump && actor->grounded) ? (void) (actor->rigb.vel.y = 2048.0f, actor->grounded = 0) : (void) 0;
+
+    if (jump && actor->grounded) {
+        actor->rigb.vel.y = 2048.0f;
+        actor->jumped = 1;
+        actor->grounded = 0;
+    } else if (jump && actor->jumped == 1) {
+        actor->rigb.vel.y = 2048.0f;
+        actor->jumped = 2;
+    }
 
     vec2_t acc = vec2(
         actor->rigb.force.x / actor->rigb.mass, 
@@ -786,6 +794,7 @@ void game_actor_colls_handle(actor_t *actor, collider_t **colls, float dt) {
             } else if (actor->rigb.vel.y < 0) {
                 actor->pos.y = colls[i]->max.y;
                 actor->coll.mask |= GAME_COLL_BOTTOM;
+                actor->jumped = 0;
                 actor->grounded = 1;
             }
             actor->rigb.vel.y = 0.0f;
@@ -839,10 +848,6 @@ typedef enum {
     GAME_STATE_PLAY = 2,
     GAME_STATE_RESET = 3
 } game_state_t;
-
-void game_level_save(void) {}
-
-void game_level_reset(void) {}
 
 static struct {
 
@@ -1201,7 +1206,10 @@ void _game_keyboard_handle(float dt) {
     uint8_t pcrouch = 0, ecrouch = 0;
 
     // KEY W
-    if (context.platform.keys[GLFW_KEY_W]) pjump = 1;
+    if (context.platform.keys[GLFW_KEY_W] == 1) {
+        context.platform.keys[GLFW_KEY_W] = 2;
+        pjump = 1;
+    }
 
     // KEY A
     if (context.platform.keys[GLFW_KEY_A]) pxacc -= 1.0f;
@@ -1219,10 +1227,10 @@ void _game_keyboard_handle(float dt) {
             vec2_t pos = vec2(
                 context.game.player.flip ? context.game.player.coll.min.x : context.game.player.coll.max.x,
                 context.game.player.coll.max.y - (GAME_ACTOR_SPRITE_SCALE * 32.0f)
-            ); // from pos of the gun
+            );
 
             bullet_t bullet = {
-                .pos = pos, // pos and box has to be affected by flip
+                .pos = pos,
                 .rigb = (rigidbody_t) {.vel = vec2(0.0f, 0.0f), .force = vec2(context.game.player.flip ? -1024.0f : 1024.0f, 0.0f), .mass = 0.01f, .grav = 1.0f, .fric = 0.9f, .drag = 0.99f, .bounce = 0.1f},
                 .coll = (collider_t) {.min = pos, .max = vec2(pos.x + (GAME_ACTOR_SPRITE_SCALE * 8.0f), pos.y + (GAME_ACTOR_SPRITE_SCALE * 4.0f)), .mask = GAME_COLL_NONE},
                 .sprite = context.game.level.sprites[1],
@@ -1243,7 +1251,10 @@ void _game_keyboard_handle(float dt) {
     }
 
     // KEY UP
-    if (context.platform.keys[GLFW_KEY_UP]) ejump = 1;
+    if (context.platform.keys[GLFW_KEY_UP] == 1) {
+        context.platform.keys[GLFW_KEY_UP] = 2;
+        ejump = 1;
+    }
 
     // KEY LEFT
     if (context.platform.keys[GLFW_KEY_LEFT]) exacc -= 1.0f;
@@ -1264,7 +1275,7 @@ void _game_keyboard_handle(float dt) {
             );
 
             bullet_t bullet = {
-                .pos = pos, // pos and box has to be affected by flip
+                .pos = pos,
                 .rigb = (rigidbody_t) {.vel = vec2(0.0f, 0.0f), .force = vec2(context.game.enemy.flip ? -1024.0f : 1024.0f, 0.0f), .mass = 0.01f, .grav = 1.0f, .fric = 0.9f, .drag = 0.99f, .bounce = 0.4f},
                 .coll = (collider_t) {.min = pos, .max = vec2(pos.x + (GAME_ACTOR_SPRITE_SCALE * 8.0f), pos.y + (GAME_ACTOR_SPRITE_SCALE * 4.0f)), .mask = GAME_COLL_NONE},
                 .sprite = context.game.level.sprites[1],
@@ -1293,7 +1304,7 @@ void _game_keyboard_handle(float dt) {
     // movement should be handled in game_bullet_move or smth like that
     for (uint32_t i = 0; i < GAME_LEVEL_BULLET_ARRAY_SIZE; i++) {
         if (context.game.level.bullets[i].used) {
-            if (context.game.level.bullets[i].pos.x < 0 || context.game.level.bullets[i].pos.x > WINDOW_WIDTH) {
+            if (context.game.level.bullets[i].coll.max.x < 0 || context.game.level.bullets[i].pos.x > WINDOW_WIDTH) {
                 context.game.level.bullets[i].used = 0;
             } else {
                 game_bullet_move(&context.game.level.bullets[i], dt);
@@ -1302,6 +1313,10 @@ void _game_keyboard_handle(float dt) {
     }
 
 }
+
+void game_level_save(void) {}
+
+void game_level_reset(void) {}
 
 void game_init(void) {
 
@@ -1403,6 +1418,7 @@ void game_init(void) {
     context.game.player.pos = vec2(150.0f, 100.0f);
     context.game.player.rigb = (rigidbody_t) {.vel = vec2(0.0f, 0.0f), .force = vec2(0.0f, 0.0f), .mass = 1.0f, .grav = 1.0f, .fric = 0.9f, .drag = 0.94f, .bounce = 0.0f};
     context.game.player.coll = (collider_t) {.min = vec2(150.0f, 100.0f), .max = vec2(150.0f + (GAME_ACTOR_SPRITE_SCALE * 48.0f), 100.0f + (GAME_ACTOR_SPRITE_SCALE * 48.0f)), .mask = GAME_COLL_NONE};
+    context.game.player.jumped = 0;
     context.game.player.grounded = 0;
 
     context.game.player.sprites = mem_arena_alloc(&context.arena, GAME_ACTOR_SPRITE_ARRAY_SIZE * sizeof(sprite_t));
@@ -1422,6 +1438,7 @@ void game_init(void) {
     context.game.enemy.pos = vec2(450.0f, 100.0f);
     context.game.enemy.rigb = (rigidbody_t) {.vel = vec2(0.0f, 0.0f), .force = vec2(0.0f, 0.0f), .mass = 1.0f, .grav = 1.0f, .fric = 0.9f, .drag = 0.94f, .bounce = 0.0f};
     context.game.enemy.coll = (collider_t) {.min = vec2(450.0f, 100.0f), .max = vec2(450.0f + (GAME_ACTOR_SPRITE_SCALE * 48.0f), 100.0f + (GAME_ACTOR_SPRITE_SCALE * 48.0f)), .mask = GAME_COLL_NONE};
+    context.game.enemy.jumped = 0;
     context.game.enemy.grounded = 0;
 
     context.game.enemy.sprites = mem_arena_alloc(&context.arena, GAME_ACTOR_SPRITE_ARRAY_SIZE * sizeof(sprite_t));
