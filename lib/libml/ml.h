@@ -46,8 +46,8 @@ static inline void ml_mat_rand(mat_t *mat, float min, float max) {
 }
 
 static inline void ml_mat_dot(mat_t *mat, mat_t *a, mat_t *b) {
-    assert(a->cols == b->rows);
     assert(mat->rows == a->rows && mat->cols == b->cols);
+    assert(a->cols == b->rows);
 
     for (uint32_t i = 0; i < a->rows; i++) {
         for (uint32_t j = 0; j < b->cols; j++) {
@@ -61,8 +61,8 @@ static inline void ml_mat_dot(mat_t *mat, mat_t *a, mat_t *b) {
 }
 
 static inline void ml_mat_add(mat_t *mat, mat_t *a, mat_t *b) {
-    // assert?
-    // assert?
+    assert(mat->rows == a->rows && mat->cols == a->cols);
+    assert(a->rows == b->rows && a->cols == b->cols);
 
     for (uint32_t i = 0; i < (a->rows * a->cols); i++) {
         mat->data[i] = a->data[i] + b->data[i];
@@ -76,7 +76,7 @@ static inline void ml_mat_zero(mat_t *mat) {
 }
 
 static inline void ml_mat_transp(mat_t *mat, mat_t *a) {
-    // assert?
+    assert(mat->rows == a->cols && mat->cols == a->rows);
     for (uint32_t i = 0; i < a->rows; i++) {
         for (uint32_t j = 0; j < a->cols; j++) {
             mat->data[j * mat->cols + i] = a->data[i * a->cols + j];
