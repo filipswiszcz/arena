@@ -128,11 +128,9 @@ static inline void ml_network_init(ml_network_t *network, float **data, uint32_t
     network->hidd.biases = mat(data[1], 1, hiddsize);
     network->out.weights = mat(data[2], hiddsize, outsize);
     network->out.biases = mat(data[3], 1, outsize);
+    network->hidd.outs = mat(data[4], 1, hiddsize);
 
     for (uint32_t i = 0; i < (hiddsize * insize); i++) {
-        // if (i < hiddsize) {
-        //     network->hidd.biases.data[i] = 0.0f;
-        // }
         network->hidd.weights.data[i] = ml_brandom(1.0f / sqrtf((float) insize));
     }
 
@@ -141,9 +139,6 @@ static inline void ml_network_init(ml_network_t *network, float **data, uint32_t
     }
 
     for (uint32_t i = 0; i < (hiddsize * outsize); i++) {
-        // if (i < outsize) {
-        //     network->out.biases.data[i] = 0.0f;
-        // }
         network->out.weights.data[i] = ml_brandom(1.0f / sqrtf((float) hiddsize));
     }
 
@@ -375,5 +370,14 @@ static inline void ml_network_episode_train(ml_network_t *network, float *data, 
 //     }
 
 // }
+
+static inline int32_t ml_sample_action(mat_t *probs) {
+    float r = ml_random(), accum = 0.0f;
+    for (uint32_t i = 0; i < probs->cols; i++) {
+        accum += probs->data[i];
+        if (r <= accum) return i;
+    }
+    return probs->cols - 1;
+}
 
 #endif // !__LIBML__
