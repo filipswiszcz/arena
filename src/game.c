@@ -201,6 +201,46 @@ void sprite_init(sprite_t *sprite, texture_t *texture, vec2_t scale, vec2_t offs
 #define FONT_HEIGHT 6
 
 static char GLYPHS[128][FONT_WIDTH][FONT_HEIGHT] = {
+    ['A'] = {
+        {0, 1, 1, 0, 0},
+        {1, 0, 0, 1, 0},
+        {1, 0, 0, 1, 0},
+        {1, 1, 1, 1, 0},
+        {1, 0, 0, 1, 0},
+        {1, 0, 0, 1, 0},
+    },
+    // ['B'] = {
+    //     {1, 0, 0, 0, 0},
+    //     {1, 1, 1, 0, 0},
+    //     {1, 0, 0, 1, 0},
+    //     {1, 0, 0, 1, 0},
+    //     {1, 0, 0, 1, 0},
+    //     {1, 1, 1, 0, 0},
+    // },
+    // ['C'] = {
+    //     {0, 0, 0, 0, 0},
+    //     {0, 1, 1, 0, 0},
+    //     {1, 0, 0, 1, 0},
+    //     {1, 0, 0, 0, 0},
+    //     {1, 0, 0, 1, 0},
+    //     {0, 1, 1, 0, 0},
+    // },
+    ['D'] = {
+        {1, 1, 1, 0, 0},
+        {1, 0, 0, 1, 0},
+        {1, 0, 0, 1, 0},
+        {1, 0, 0, 1, 0},
+        {1, 0, 0, 1, 0},
+        {1, 1, 1, 0, 0},
+    },
+    ['E'] = {
+        {1, 1, 1, 1, 0},
+        {1, 0, 0, 0, 0},
+        {1, 0, 0, 0, 0},
+        {1, 1, 1, 0, 0},
+        {1, 0, 0, 0, 0},
+        {1, 1, 1, 1, 0},
+    },
     ['F'] = {
         {1, 1, 1, 1, 0},
         {1, 0, 0, 0, 0},
@@ -209,6 +249,78 @@ static char GLYPHS[128][FONT_WIDTH][FONT_HEIGHT] = {
         {1, 0, 0, 0, 0},
         {1, 0, 0, 0, 0},
     },
+    // ['G'] = {
+    //     {0, 1, 1, 1, 0},
+    //     {1, 0, 0, 1, 0},
+    //     {1, 0, 0, 1, 0},
+    //     {0, 1, 1, 1, 0},
+    //     {0, 0, 0, 1, 0},
+    //     {0, 1, 1, 0, 0},
+    // },
+    // ['H'] = {
+    //     {1, 0, 0, 0, 0},
+    //     {1, 1, 1, 0, 0},
+    //     {1, 0, 0, 1, 0},
+    //     {1, 0, 0, 1, 0},
+    //     {1, 0, 0, 1, 0},
+    //     {1, 0, 0, 1, 0},
+    // },
+    ['I'] = {
+        {0, 0, 1, 0, 0},
+        {0, 0, 0, 0, 0},
+        {0, 0, 1, 0, 0},
+        {0, 0, 1, 0, 0},
+        {0, 0, 1, 0, 0},
+        {0, 0, 1, 0, 0},
+    },
+    ['J'] = {
+        {0, 0, 1, 0, 0},
+        {0, 0, 0, 0, 0},
+        {0, 0, 1, 0, 0},
+        {0, 0, 1, 0, 0},
+        {1, 0, 1, 0, 0},
+        {0, 1, 1, 0, 0},
+    },
+    ['K'] = {
+        {1, 0, 0, 1, 0},
+        {1, 0, 1, 0, 0},
+        {1, 1, 0, 0, 0},
+        {1, 1, 0, 0, 0},
+        {1, 0, 1, 0, 0},
+        {1, 0, 0, 1, 0},
+    },
+    ['L'] = {
+        {1, 0, 0, 0, 0},
+        {1, 0, 0, 0, 0},
+        {1, 0, 0, 0, 0},
+        {1, 0, 0, 0, 0},
+        {1, 0, 0, 0, 0},
+        {1, 1, 1, 1, 0},
+    },
+    ['M'] = {
+        {1, 1, 0, 1, 1},
+        {1, 0, 1, 0, 1},
+        {1, 0, 1, 0, 1},
+        {1, 0, 1, 0, 1},
+        {1, 0, 1, 0, 1},
+        {1, 0, 1, 0, 1},
+    },
+    ['N'] = {
+        {1, 0, 0, 1, 0},
+        {1, 1, 0, 1, 0},
+        {1, 1, 0, 1, 0},
+        {1, 0, 1, 1, 0},
+        {1, 0, 1, 1, 0},
+        {1, 0, 0, 1, 0},
+    },
+    // ['O'] = {
+    //     {0, 0, 0, 0, 0},
+    //     {0, 1, 1, 0, 0},
+    //     {1, 0, 0, 1, 0},
+    //     {1, 0, 0, 1, 0},
+    //     {1, 0, 0, 1, 0},
+    //     {0, 1, 1, 0, 0},
+    // },
     ['P'] = {
         {1, 1, 1, 0, 0},
         {1, 0, 0, 1, 0},
@@ -217,14 +329,86 @@ static char GLYPHS[128][FONT_WIDTH][FONT_HEIGHT] = {
         {1, 0, 0, 0, 0},
         {1, 0, 0, 0, 0},
     },
+    // ['Q'] = {
+    //     {0, 1, 1, 1, 0},
+    //     {1, 0, 0, 1, 0},
+    //     {1, 0, 0, 1, 0},
+    //     {0, 1, 1, 1, 0},
+    //     {0, 0, 0, 1, 0},
+    //     {0, 0, 0, 1, 0},
+    // },
+    ['R'] = {
+        {1, 1, 1, 0, 0},
+        {1, 0, 0, 1, 0},
+        {1, 0, 0, 1, 0},
+        {1, 1, 1, 0, 0},
+        {1, 0, 0, 1, 0},
+        {1, 0, 0, 1, 0},
+    },
     ['S'] = {
         {0, 1, 1, 1, 0},
         {1, 0, 0, 0, 0},
         {1, 0, 0, 0, 0},
-        {0, 1, 1, 1, 0},
-        {0, 0, 0, 0, 1},
-        {1, 1, 1, 1, 0},
+        {0, 1, 1, 0, 0},
+        {0, 0, 0, 1, 0},
+        {1, 1, 1, 0, 0},
     },
+    ['T'] = {
+        {1, 1, 1, 1, 1},
+        {0, 0, 1, 0, 0},
+        {0, 0, 1, 0, 0},
+        {0, 0, 1, 0, 0},
+        {0, 0, 1, 0, 0},
+        {0, 0, 1, 0, 0},
+    },
+    ['U'] = {
+        {1, 0, 0, 1, 0},
+        {1, 0, 0, 1, 0},
+        {1, 0, 0, 1, 0},
+        {1, 0, 0, 1, 0},
+        {1, 0, 0, 1, 0},
+        {0, 1, 1, 1, 0},
+    },
+    ['V'] = {
+        {1, 0, 0, 1, 0},
+        {1, 0, 0, 1, 0},
+        {1, 0, 0, 1, 0},
+        {1, 0, 0, 1, 0},
+        {1, 0, 0, 1, 0},
+        {0, 1, 1, 0, 0},
+    },
+    ['W'] = {
+        {1, 0, 0, 0, 1},
+        {1, 0, 1, 0, 1},
+        {1, 0, 1, 0, 1},
+        {1, 0, 1, 0, 1},
+        {1, 0, 1, 0, 1},
+        {1, 1, 0, 1, 1},
+    },
+    // ['X'] = {
+    //     {0, 0, 0, 0, 0},
+    //     {1, 0, 1, 0, 0},
+    //     {1, 0, 1, 0, 0},
+    //     {0, 1, 0, 0, 0},
+    //     {1, 0, 1, 0, 0},
+    //     {1, 0, 1, 0, 0},
+    // },
+    ['Y'] = {
+        {1, 0, 0, 1, 0},
+        {1, 0, 0, 1, 0},
+        {1, 0, 0, 1, 0},
+        {0, 1, 1, 0, 0},
+        {0, 1, 1, 0, 0},
+        {0, 1, 1, 0, 0},
+    },
+    // ['Z'] = {
+    //     {0, 0, 0, 0, 0},
+    //     {1, 1, 1, 1, 0},
+    //     {0, 0, 0, 1, 0},
+    //     {0, 1, 1, 0, 0},
+    //     {1, 0, 0, 0, 0},
+    //     {1, 1, 1, 1, 0},
+    // },
     ['0'] = {
         {0, 1, 1, 0, 0},
         {1, 0, 0, 1, 0},
@@ -306,6 +490,14 @@ static char GLYPHS[128][FONT_WIDTH][FONT_HEIGHT] = {
         {0, 0, 0, 1, 0},
         {0, 1, 1, 0, 0},
     },
+    ['/'] = {
+        {0, 0, 0, 1, 0},
+        {0, 0, 1, 0, 0},
+        {0, 0, 1, 0, 0},
+        {0, 1, 0, 0, 0},
+        {0, 1, 0, 0, 0},
+        {1, 0, 0, 0, 0},
+    },
     [':'] = {
         {0, 0, 0, 0, 0},
         {0, 0, 0, 0, 0},
@@ -313,6 +505,22 @@ static char GLYPHS[128][FONT_WIDTH][FONT_HEIGHT] = {
         {0, 0, 0, 0, 0},
         {0, 0, 0, 0, 0},
         {0, 0, 1, 0, 0},
+    },
+    ['['] = {
+        {0, 0, 1, 1, 0},
+        {0, 0, 1, 0, 0},
+        {0, 0, 1, 0, 0},
+        {0, 0, 1, 0, 0},
+        {0, 0, 1, 0, 0},
+        {0, 0, 1, 1, 0},
+    },
+    [']'] = {
+        {1, 1, 0, 0, 0},
+        {0, 1, 0, 0, 0},
+        {0, 1, 0, 0, 0},
+        {0, 1, 0, 0, 0},
+        {0, 1, 0, 0, 0},
+        {1, 1, 0, 0, 0},
     }
 };
 
@@ -926,6 +1134,8 @@ static struct {
             text_t *texts;
 
             bullet_t *bullets;
+
+            uint16_t turn;
         } level;
 
         actor_t player;
@@ -934,7 +1144,6 @@ static struct {
 
     struct {
         ml_network_t network;
-        // ml_trajectory_t trajectory;
         float *region;
     } ml;
 
@@ -1668,10 +1877,10 @@ void game_init(void) {
     context.game.level.texts = mem_arena_alloc(&context.arena, GAME_LEVEL_TEXT_ARRAY_SIZE * sizeof(text_t));
     context.game.level.bullets = mem_arena_alloc(&context.arena, GAME_LEVEL_BULLET_ARRAY_SIZE * sizeof(bullet_t));
     for (uint32_t i = 0; i < GAME_LEVEL_BULLET_ARRAY_SIZE; i++) context.game.level.bullets[i] = (bullet_t) {0}; // is there a cooler way to init this?
+    context.game.level.turn = 0;
 
     sprite_init(&context.game.level.sprites[0], &context.resources.textures[0], vec2(1.0f, 1.0f), vec2(0.0f, 0.0f), vec2(0.0f, 0.0f), vec2(GAME_ACTOR_SPRITE_SCALE * 6.0f, GAME_ACTOR_SPRITE_SCALE * 6.0f), 0.0f, vec3(1.0f, 1.0f, 1.0f), 0, 0); // bullet
     sprite_init(&context.game.level.sprites[1], &context.resources.textures[1], vec2(1.0f, 1.0f), vec2(0.0f, 0.0f), vec2(0.0f, 0.0f), vec2(GAME_ACTOR_SPRITE_SCALE * 18.0f, GAME_ACTOR_SPRITE_SCALE * 8.0f), 0.0f, vec3(1.0f, 1.0f, 1.0f), 0, 0); // gun
-    // sprite_init(sprite_t *sprite, texture_t *texture, vec2_t scale, vec2_t offset, vec2_t pos, vec2_t size, float rot, vec3_t color, uint8_t zorder, uint8_t flip);
 
     // level
     context.game.level.b = (collider_t) {.min = vec2(0.0f, 0.0f), .max = vec2(WINDOW_WIDTH, (WINDOW_HEIGHT / 12.0f)), .mask = GAME_COLL_NONE};
@@ -1682,18 +1891,14 @@ void game_init(void) {
     context.game.player.pos = vec2(150.0f, 100.0f);
     context.game.player.rigb = (rigidbody_t) {.vel = vec2(0.0f, 0.0f), .force = vec2(0.0f, 0.0f), .mass = 1.0f, .grav = 1.0f, .fric = 0.9f, .drag = 0.94f, .bounce = 0.0f};
     context.game.player.coll = (collider_t) {.min = vec2(150.0f, 100.0f), .max = vec2(150.0f + (GAME_ACTOR_SPRITE_SCALE * 48.0f), 100.0f + (GAME_ACTOR_SPRITE_SCALE * 48.0f)), .mask = GAME_COLL_NONE};
-
     context.game.player.sprites = mem_arena_alloc(&context.arena, GAME_ACTOR_SPRITE_ARRAY_SIZE * sizeof(sprite_t));
     context.game.player.action = ACTOR_ACTION_IDLE;
     context.game.player.animation = (actor_animation_t) {.step = ACTOR_ANIMATION_STEP_4, .tick = 0, .lock = 0};
-
     context.game.player.cooldown = 0;
-
     context.game.player.alive = 1;
     context.game.player.jumped = 0;
     context.game.player.grounded = 0;
     context.game.player.flip = 0;
-
     context.game.player.kills = 0;
     context.game.player.deaths = 0;
 
@@ -1709,18 +1914,14 @@ void game_init(void) {
     context.game.enemy.pos = vec2(450.0f, 100.0f);
     context.game.enemy.rigb = (rigidbody_t) {.vel = vec2(0.0f, 0.0f), .force = vec2(0.0f, 0.0f), .mass = 1.0f, .grav = 1.0f, .fric = 0.9f, .drag = 0.94f, .bounce = 0.0f};
     context.game.enemy.coll = (collider_t) {.min = vec2(450.0f, 100.0f), .max = vec2(450.0f + (GAME_ACTOR_SPRITE_SCALE * 48.0f), 100.0f + (GAME_ACTOR_SPRITE_SCALE * 48.0f)), .mask = GAME_COLL_NONE};
-
     context.game.enemy.sprites = mem_arena_alloc(&context.arena, GAME_ACTOR_SPRITE_ARRAY_SIZE * sizeof(sprite_t));
     context.game.enemy.action = ACTOR_ACTION_IDLE;
     context.game.enemy.animation = (actor_animation_t) {.step = ACTOR_ANIMATION_STEP_4, .tick = 0, .lock = 0};
-
     context.game.enemy.cooldown = 0;
-
     context.game.enemy.alive = 1;
     context.game.enemy.jumped = 0;
     context.game.enemy.grounded = 0;
     context.game.enemy.flip = 1;
-
     context.game.enemy.kills = 0;
     context.game.enemy.deaths = 0;
 
@@ -1799,7 +2000,6 @@ void game_update(void) {
                 game_actor_colls_handle(&context.game.enemy, colls);
 
                 actor_t *actors[] = {&context.game.player, &context.game.enemy};
-
                 for (uint32_t i = 0; i < GAME_LEVEL_BULLET_ARRAY_SIZE; i++) {
                     if (context.game.level.bullets[i].used) {
                         game_bullet_coll_handle(&context.game.level.bullets[i], actors);
@@ -1813,7 +2013,6 @@ void game_update(void) {
                         context.game.player.traj.rewards[context.game.player.traj.steps - 1] += (context.game.player.alive ? 100.0f : -100.0f);
                         ml_network_episode_train(&context.ml.network, context.ml.region, &context.game.player.traj);
                     }
-
                     if (context.game.enemy.traj.steps > 0) {
                         context.game.enemy.traj.rewards[context.game.enemy.traj.steps - 1] += (context.game.enemy.alive ? 100.0f : -100.0f);
                         ml_network_episode_train(&context.ml.network, context.ml.region, &context.game.enemy.traj);
@@ -1822,7 +2021,19 @@ void game_update(void) {
                     context.game.player.traj.steps = 0;
                     context.game.enemy.traj.steps = 0;
 
-                    game_level_reset(); // respawn actors, clear bullets
+                    // level
+                    context.game.level.turn++;
+
+                    if (!context.game.player.alive) {
+                        context.game.player.deaths++;
+                        context.game.enemy.kills++;
+                    }
+                    if (!context.game.enemy.alive) {
+                        context.game.enemy.deaths++;
+                        context.game.player.kills++;
+                    }
+
+                    game_level_reset();
                 }
 
             }
@@ -1864,12 +2075,6 @@ void game_update(void) {
             .zorder = 2,
             .flip = 0
         });
-
-        // for (uint32_t i = 0; i < 3; i++) {
-        //     renderer_frame_command_push(&context.renderer, (command_t {
-        //         .texture = context.game.level.
-        //     }));
-        // }
 
         // bullet
         for (uint32_t i = 0; i < GAME_LEVEL_BULLET_ARRAY_SIZE; i++) {
@@ -1950,9 +2155,15 @@ void game_update(void) {
         sprintf(content, "FPS: %0.f", context.ticker.framerate.value);
         text_draw(&context.ticker.framerate.text, content, 16.0f, (float) (WINDOW_HEIGHT - 16.0f), 2.0f);
 
-        // char turn[64];
-        // sprintf(turn, "TURN: %d", 0);
-        // text_draw(&context.game.level.texts[0], turn, 16.0f, (float) (WINDOW_HEIGHT - 32.0f), 2.0f);
+        char stats[64];
+        sprintf(stats, "TURN: %u", context.game.level.turn);
+        text_draw(&context.game.level.texts[0], stats, 16.0f, (float) (WINDOW_HEIGHT - 32.0f), 2.0f);
+
+        sprintf(stats, "PLAYER [K/D]: %u/%u", context.game.player.kills, context.game.player.deaths);
+        text_draw(&context.game.level.texts[0], stats, (float) WINDOW_WIDTH - 256.0f, (float) (WINDOW_HEIGHT - 16.0f), 2.0f);
+
+        sprintf(stats, "ENEMY  [K/D]: %u/%u", context.game.enemy.kills, context.game.enemy.deaths);
+        text_draw(&context.game.level.texts[0], stats, (float) WINDOW_WIDTH - 256.0f, (float) (WINDOW_HEIGHT - 32.0f), 2.0f);
 
         // OPENGL
         glfwSwapBuffers(context.platform.window);
