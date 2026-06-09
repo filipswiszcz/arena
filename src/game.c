@@ -249,14 +249,14 @@ static char GLYPHS[128][FONT_WIDTH][FONT_HEIGHT] = {
         {1, 0, 0, 0, 0},
         {1, 0, 0, 0, 0},
     },
-    // ['G'] = {
-    //     {0, 1, 1, 1, 0},
-    //     {1, 0, 0, 1, 0},
-    //     {1, 0, 0, 1, 0},
-    //     {0, 1, 1, 1, 0},
-    //     {0, 0, 0, 1, 0},
-    //     {0, 1, 1, 0, 0},
-    // },
+    ['G'] = {
+        {0, 1, 1, 1, 1},
+        {1, 0, 0, 0, 0},
+        {1, 0, 0, 0, 0},
+        {1, 0, 1, 1, 1},
+        {1, 0, 0, 0, 1},
+        {1, 1, 1, 1, 0},
+    },
     // ['H'] = {
     //     {1, 0, 0, 0, 0},
     //     {1, 1, 1, 0, 0},
@@ -865,6 +865,7 @@ uint8_t GAME_MEMORY[GAME_MEMORY_CAPACITY];
 
 #define GAME_ACTOR_SPRITE_ARRAY_SIZE 8
 #define GAME_ACTOR_SPRITE_SCALE 2
+#define GAME_ACTOR_SHOOT_COOLDOWN 30
 
 #define GAME_ML_INPUTS 6
 #define GAME_ML_OUTPUTS 6
@@ -1366,6 +1367,31 @@ void game_actor_move(actor_t *actor, float xacc, uint8_t jump, uint8_t crouch) {
     actor->rigb.force.y = 0.0f;
 }
 
+void game_actor_shoot(actor_t *actor) {
+    if (!actor->alive || actor->cooldowns[ACTOR_COOLDOWN_SHOOT] > 0) return;
+
+    vec2_t pos = vec2(
+        actor->flip ? (actor->coll.min.x - (GAME_ACTOR_SPRITE_SCALE * 8.0f)) : actor->coll.max.x,
+        actor->coll.max.y - (GAME_ACTOR_SPRITE_SCALE * (actor->crouched ? 4.0f: 16.0f))
+    );
+
+    bullet_t bullet = {
+        .pos = pos,
+        .rigb = (rigidbody_t) {.vel = vec2(0.0f, 0.0f), .force = vec2(actor->flip ? -1024.0f : 1024.0f, 0.0f), .mass = 0.01f, .grav = 1.0f, .fric = 0.9f, .drag = 0.99f, .bounce = 0.1f},
+        .coll = (collider_t) {.min = pos, .max = vec2(pos.x + (GAME_ACTOR_SPRITE_SCALE * 8.0f), pos.y + (GAME_ACTOR_SPRITE_SCALE * 4.0f)), .mask = GAME_COLL_NONE},
+        .sprite = context.game.level.sprites[1],
+        .shooter = actor,
+        .used = 1,
+        .flip = actor->flip
+    };
+
+    for (uint32_t i = 0; i < GAME_LEVEL_BULLET_ARRAY_SIZE; i++) { // is uint32_t bad as a loop index?
+        if (!context.game.level.bullets[i].used) {context.game.level.bullets[i] = bullet; break;}
+    }
+
+    actor->cooldowns[ACTOR_COOLDOWN_SHOOT] = GAME_ACTOR_SHOOT_COOLDOWN;
+}
+
 void game_actor_colls_handle(actor_t *actor, collider_t **colls) {
     if (!actor->alive) return;
 
@@ -1393,7 +1419,8 @@ void game_actor_colls_handle(actor_t *actor, collider_t **colls) {
 
     actor->pos.y += actor->rigb.vel.y * context.ticker.time_between_frames;
     actor->coll.min = actor->pos;
-    actor->coll.max = vec2(actor->pos.x + (GAME_ACTOR_SPRITE_SCALE * 48.0f), actor->pos.y + (GAME_ACTOR_SPRITE_SCALE * 48.0f));
+    if (actor->crouched) actor->coll.max = vec2(actor->pos.x + actor->sprites[actor->action].size.x, actor->pos.y + (actor->sprites[actor->action].size.y / 2));
+    else actor->coll.max = vec2(actor->pos.x + actor->sprites[actor->action].size.x, actor->pos.y + actor->sprites[actor->action].size.y);
 
     for (uint32_t i = 0; i < 2; i++) {
         if (game_collider_aabb_check(&actor->coll, colls[i])) {
@@ -1495,75 +1522,34 @@ void _game_keyboard_handle(void) { // it has to rewritten as well (try to handle
     float xacc = 0.0f;
     uint8_t jump = 0, crouch = 0;
 
-    // float pxacc = 0.0f, exacc = 0.0f;
-    // uint8_t pjump = 0, ejump = 0;
-    // uint8_t pcrouch = 0, ecrouch = 0;
-
     // KEY W
     if (context.platform.keys[GLFW_KEY_W] == 1) {
         context.platform.keys[GLFW_KEY_W] = 2; jump = 1;
     }
 
     // KEY A
-    if (context.platform.keys[GLFW_KEY_A]) xacc -= 1.0f;
+    if (context.platform.keys[GLFW_KEY_A]) {
+        xacc -= 1.0f;
+    }
 
     // KEY S
-    if (context.platform.keys[GLFW_KEY_S]) crouch = 1;
+    if (context.platform.keys[GLFW_KEY_S]) {
+        crouch = 1;
+    }
 
     // KEY D
-    if (context.platform.keys[GLFW_KEY_D]) xacc += 1.0f;
+    if (context.platform.keys[GLFW_KEY_D]) {
+        xacc += 1.0f;
+    }
 
     // KEY F
     if (context.platform.keys[GLFW_KEY_F]) {
-        if (context.game.player.alive && context.game.player.cooldowns[ACTOR_COOLDOWN_SHOOT] == 0) {
-
-            vec2_t pos = vec2(
-                context.game.player.flip ? context.game.player.coll.min.x : context.game.player.coll.max.x,
-                context.game.player.coll.max.y - (GAME_ACTOR_SPRITE_SCALE * 32.0f)
-            );
-
-            bullet_t bullet = {
-                .pos = pos,
-                .rigb = (rigidbody_t) {.vel = vec2(0.0f, 0.0f), .force = vec2(context.game.player.flip ? -1024.0f : 1024.0f, 0.0f), .mass = 0.01f, .grav = 1.0f, .fric = 0.9f, .drag = 0.99f, .bounce = 0.1f},
-                .coll = (collider_t) {.min = pos, .max = vec2(pos.x + (GAME_ACTOR_SPRITE_SCALE * 8.0f), pos.y + (GAME_ACTOR_SPRITE_SCALE * 4.0f)), .mask = GAME_COLL_NONE},
-                .sprite = context.game.level.sprites[1],
-                .shooter = &context.game.player,
-                .used = 1,
-                .flip = context.game.player.flip
-            };
-
-            for (uint32_t i = 0; i < GAME_LEVEL_BULLET_ARRAY_SIZE; i++) { // is uint32_t bad as a loop index?
-                if (!context.game.level.bullets[i].used) {
-                    context.game.level.bullets[i] = bullet; break;
-                }
-            }
-
-            context.game.player.cooldowns[ACTOR_COOLDOWN_SHOOT] = 60;
-
-        }
+        game_actor_shoot(&context.game.player);
     }
 
-    if (context.game.player.alive) game_actor_move(&context.game.player, xacc, jump, crouch);
-
-    // handle elsewhere
-    if (context.game.player.cooldowns[ACTOR_COOLDOWN_DOUBLE_JUMP] > 0) context.game.player.cooldowns[ACTOR_COOLDOWN_DOUBLE_JUMP]--;
-    if (context.game.enemy.cooldowns[ACTOR_COOLDOWN_DOUBLE_JUMP] > 0) context.game.enemy.cooldowns[ACTOR_COOLDOWN_DOUBLE_JUMP]--;
-
-    // this should be handled in game_bullet_move or smth like that
-    if (context.game.player.cooldowns[ACTOR_COOLDOWN_SHOOT] > 0) context.game.player.cooldowns[ACTOR_COOLDOWN_SHOOT]--;
-    if (context.game.enemy.cooldowns[ACTOR_COOLDOWN_SHOOT] > 0) context.game.enemy.cooldowns[ACTOR_COOLDOWN_SHOOT]--;
-
-    // and this as well
-    for (uint32_t i = 0; i < GAME_LEVEL_BULLET_ARRAY_SIZE; i++) {
-        if (context.game.level.bullets[i].used) {
-            if (context.game.level.bullets[i].coll.max.x < 0 || context.game.level.bullets[i].pos.x > WINDOW_WIDTH) {
-                context.game.level.bullets[i].used = 0;
-            } else {
-                game_bullet_move(&context.game.level.bullets[i]);
-            }
-        }
+    if (context.game.player.alive) {
+        game_actor_move(&context.game.player, xacc, jump, crouch);
     }
-
 }
 
 void game_ml_init(void) {
@@ -1618,42 +1604,19 @@ void game_ml_step(actor_t *actor, actor_t *enemy, ml_trajectory_t *traj, float d
 
     game_actor_move(actor, xacc, jump, crouch);
 
-    if (dir == 1.0f && actor->pos.x > (WINDOW_WIDTH / 2.0f) - 48.0f) {
-        actor->pos.x = (WINDOW_WIDTH / 2.0f) - 48.0f;
-        actor->rigb.vel.x = 0;
-    }
+    // if (dir == 1.0f && actor->pos.x > (WINDOW_WIDTH / 2.0f) - 48.0f) {
+    //     actor->pos.x = (WINDOW_WIDTH / 2.0f) - 48.0f;
+    //     actor->rigb.vel.x = 0;
+    // }
 
-    if (dir == -1.0f && actor->pos.x < (WINDOW_WIDTH / 2.0f)) {
-        actor->pos.x = (WINDOW_WIDTH / 2.0f);
-        actor->rigb.vel.x = 0;
-    }
+    // if (dir == -1.0f && actor->pos.x < (WINDOW_WIDTH / 2.0f)) {
+    //     actor->pos.x = (WINDOW_WIDTH / 2.0f);
+    //     actor->rigb.vel.x = 0;
+    // }
 
-    if (shoot && actor->alive && actor->cooldowns[ACTOR_COOLDOWN_SHOOT] == 0) {
+    game_actor_shoot(actor);
 
-        vec2_t pos = vec2(
-            actor->flip ? actor->coll.min.x : actor->coll.max.x,
-            actor->coll.max.y - (GAME_ACTOR_SPRITE_SCALE * 32.0f)
-        );
-
-        bullet_t bullet = {
-            .pos = pos,
-            .rigb = (rigidbody_t) {.vel = vec2(0.0f, 0.0f), .force = vec2(actor->flip ? -1024.0f : 1024.0f, 0.0f), .mass = 0.01f, .grav = 1.0f, .fric = 0.9f, .drag = 0.99f, .bounce = 0.1f},
-            .coll = (collider_t) {.min = pos, .max = vec2(pos.x + (GAME_ACTOR_SPRITE_SCALE * 8.0f), pos.y + (GAME_ACTOR_SPRITE_SCALE * 4.0f)), .mask = GAME_COLL_NONE},
-            .sprite = context.game.level.sprites[1],
-            .shooter = actor,
-            .used = 1,
-            .flip = actor->flip
-        };
-
-        for (uint32_t i = 0; i < GAME_LEVEL_BULLET_ARRAY_SIZE; i++) { // is uint32_t bad as a loop index?
-            if (!context.game.level.bullets[i].used) {context.game.level.bullets[i] = bullet; break;}
-        }
-
-        actor->cooldowns[ACTOR_COOLDOWN_SHOOT] = 60;
-
-    }
-
-    float reward = 0.0f;
+    float reward = 0.0f; // ?
     ml_trajectory_step_add(traj, &state, action, reward);
 
 }
@@ -1869,6 +1832,11 @@ void game_update(void) {
                 actor_t *actors[] = {&context.game.player, &context.game.enemy};
                 for (uint32_t i = 0; i < GAME_LEVEL_BULLET_ARRAY_SIZE; i++) {
                     if (context.game.level.bullets[i].used) {
+                        if (context.game.level.bullets[i].coll.max.x < 0 || context.game.level.bullets[i].pos.x > WINDOW_WIDTH) {
+                            context.game.level.bullets[i].used = 0;
+                        } else {
+                            game_bullet_move(&context.game.level.bullets[i]);
+                        }
                         game_bullet_coll_handle(&context.game.level.bullets[i], actors);
                     }
                 }
@@ -1901,6 +1869,21 @@ void game_update(void) {
                     }
 
                     game_level_reset();
+                }
+
+                // cooldown
+                if (context.game.player.cooldowns[ACTOR_COOLDOWN_DOUBLE_JUMP] > 0) {
+                    context.game.player.cooldowns[ACTOR_COOLDOWN_DOUBLE_JUMP]--;
+                }
+                if (context.game.enemy.cooldowns[ACTOR_COOLDOWN_DOUBLE_JUMP] > 0) {
+                    context.game.enemy.cooldowns[ACTOR_COOLDOWN_DOUBLE_JUMP]--;
+                }
+
+                if (context.game.player.cooldowns[ACTOR_COOLDOWN_SHOOT] > 0) {
+                    context.game.player.cooldowns[ACTOR_COOLDOWN_SHOOT]--;
+                }
+                if (context.game.enemy.cooldowns[ACTOR_COOLDOWN_SHOOT] > 0) {
+                    context.game.enemy.cooldowns[ACTOR_COOLDOWN_SHOOT]--;
                 }
 
             }
@@ -1962,9 +1945,9 @@ void game_update(void) {
         // player
         if (context.game.player.alive) {
             renderer_frame_command_push(&context.renderer, (command_t) {
-                .texture = context.game.player.sprites[context.game.player.action].texture, 
+                .texture = context.game.player.sprites[context.game.player.action].texture,
                 .uv = {.scale = context.game.player.sprites[context.game.player.action].uv.scale, .offset = context.game.player.sprites[context.game.player.action].uv.offset}, 
-                .pos = vec2_add(context.game.player.pos, context.game.player.sprites[context.game.player.action].pos), 
+                .pos = vec2_add(context.game.player.pos, context.game.player.sprites[context.game.player.action].pos),
                 .size = context.game.player.sprites[context.game.player.action].size,
                 .rot = context.game.player.sprites[context.game.player.action].rot,
                 .color = context.game.player.sprites[context.game.player.action].color,
@@ -1974,8 +1957,8 @@ void game_update(void) {
 
             renderer_frame_command_push(&context.renderer, (command_t) {
                 .texture = context.game.level.sprites[1].texture, 
-                .uv = {.scale = context.game.level.sprites[1].uv.scale, .offset = context.game.level.sprites[1].uv.offset}, 
-                .pos = vec2(context.game.player.flip ? context.game.player.coll.min.x + 16.0f : context.game.player.coll.max.x - 48.0f, context.game.player.coll.max.y - (GAME_ACTOR_SPRITE_SCALE * 34.0f)), 
+                .uv = {.scale = context.game.level.sprites[1].uv.scale, .offset = context.game.level.sprites[1].uv.offset},
+                .pos = vec2(context.game.player.flip ? (context.game.player.coll.min.x - (GAME_ACTOR_SPRITE_SCALE * 18.0f)) : context.game.player.coll.max.x, context.game.player.coll.max.y - (GAME_ACTOR_SPRITE_SCALE * (context.game.player.crouched ? 4.0f: 16.0f))),
                 .size = context.game.level.sprites[1].size,
                 .rot = context.game.level.sprites[1].rot,
                 .color = context.game.level.sprites[1].color,
@@ -1987,9 +1970,9 @@ void game_update(void) {
         // enemy
         if (context.game.enemy.alive) {
             renderer_frame_command_push(&context.renderer, (command_t) {
-                .texture = context.game.enemy.sprites[context.game.enemy.action].texture, 
+                .texture = context.game.enemy.sprites[context.game.enemy.action].texture,
                 .uv = {.scale = context.game.enemy.sprites[context.game.enemy.action].uv.scale, .offset = context.game.enemy.sprites[context.game.enemy.action].uv.offset}, 
-                .pos = vec2_add(context.game.enemy.pos, context.game.enemy.sprites[context.game.enemy.action].pos), 
+                .pos = vec2_add(context.game.enemy.pos, context.game.enemy.sprites[context.game.enemy.action].pos),
                 .size = context.game.enemy.sprites[context.game.enemy.action].size,
                 .rot = context.game.enemy.sprites[context.game.enemy.action].rot,
                 .color = context.game.enemy.sprites[context.game.enemy.action].color,
@@ -1998,9 +1981,9 @@ void game_update(void) {
             });
 
             renderer_frame_command_push(&context.renderer, (command_t) {
-                .texture = context.game.level.sprites[1].texture, 
-                .uv = {.scale = context.game.level.sprites[1].uv.scale, .offset = context.game.level.sprites[1].uv.offset}, 
-                .pos = vec2(context.game.enemy.flip ? context.game.enemy.coll.min.x + 16.0f : context.game.enemy.coll.max.x - 48.0f, context.game.enemy.coll.max.y - (GAME_ACTOR_SPRITE_SCALE * 32.0f)), 
+                .texture = context.game.level.sprites[1].texture,
+                .uv = {.scale = context.game.level.sprites[1].uv.scale, .offset = context.game.level.sprites[1].uv.offset},
+                .pos =  vec2(context.game.enemy.flip ? (context.game.enemy.coll.min.x - (GAME_ACTOR_SPRITE_SCALE * 18.0f)) : context.game.enemy.coll.max.x, context.game.enemy.coll.max.y - (GAME_ACTOR_SPRITE_SCALE * (context.game.enemy.crouched ? 4.0f: 16.0f))),
                 .size = context.game.level.sprites[1].size,
                 .rot = context.game.level.sprites[1].rot,
                 .color = context.game.level.sprites[1].color,
@@ -2023,17 +2006,18 @@ void game_update(void) {
         // text_draw(&context.ticker.framerate.text, content, 16.0f, (float) (WINDOW_HEIGHT - 16.0f), 2.0f);
 
         char stats[64];
-        sprintf(stats, "FPS:  %0.f", context.ticker.framerate.value);
+
+        sprintf(stats, "GAME TURN   %u", context.game.level.turn);
         text_draw(&context.game.level.texts[0], stats, 16.0f, (float) (WINDOW_HEIGHT - 16.0f), 2.0f);
 
-        sprintf(stats, "TURN: %u", context.game.level.turn);
+        sprintf(stats, "PLAYER      %u/%u [K/D]", context.game.player.kills, context.game.player.deaths);
         text_draw(&context.game.level.texts[0], stats, 16.0f, (float) (WINDOW_HEIGHT - 32.0f), 2.0f);
 
-        sprintf(stats, "PLAYER: %u/%u [K/D]", context.game.player.kills, context.game.player.deaths);
-        text_draw(&context.game.level.texts[0], stats, (float) WINDOW_WIDTH - 256.0f, (float) (WINDOW_HEIGHT - 16.0f), 2.0f);
+        sprintf(stats, "ENEMY       %u/%u [K/D]", context.game.enemy.kills, context.game.enemy.deaths);
+        text_draw(&context.game.level.texts[0], stats, 16.0f, (float) (WINDOW_HEIGHT - 48.0f), 2.0f);
 
-        sprintf(stats, "ENEMY:  %u/%u [K/D]", context.game.enemy.kills, context.game.enemy.deaths);
-        text_draw(&context.game.level.texts[0], stats, (float) WINDOW_WIDTH - 256.0f, (float) (WINDOW_HEIGHT - 32.0f), 2.0f);
+        sprintf(stats, "FPS  %0.f", context.ticker.framerate.value);
+        text_draw(&context.game.level.texts[0], stats, (float) WINDOW_WIDTH - 128.0f, (float) (WINDOW_HEIGHT - 16.0f), 2.0f);
 
         // OPENGL
         glfwSwapBuffers(context.platform.window);
