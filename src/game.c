@@ -946,7 +946,8 @@ typedef struct {
     uint16_t cooldown;
 
     uint8_t alive;
-    uint8_t jumped, grounded;
+    uint8_t jumped, crouched;
+    uint8_t grounded;
     uint8_t flip;
 
     uint16_t kills;
@@ -958,82 +959,6 @@ void game_actor_trans(actor_t *actor, vec2_t pos, vec2_t vel) {
     actor->rigb.vel = vel;
 }
 
-// void game_actor_move(actor_t *actor, float xacc, uint8_t jump, uint8_t crouch, float dt) {
-//     if (xacc < 0) actor->flip = 1;
-//     else if (xacc > 0) actor->flip = 0;
-
-//     actor->rigb.force.x += (xacc * 16384.0f);
-
-//     if (jump && actor->grounded) {
-//         actor->rigb.vel.y = 2048.0f;
-//         actor->jumped = 1;
-//         actor->grounded = 0;
-//     } else if (jump && actor->jumped == 1) {
-//         actor->rigb.vel.y = 2048.0f;
-//         actor->jumped = 2;
-//     }
-
-//     vec2_t acc = vec2(
-//         actor->rigb.force.x / actor->rigb.mass, 
-//         (actor->rigb.force.y / actor->rigb.mass) + (GAME_LEVEL_GRAVITY * actor->rigb.grav)
-//     );
-
-//     actor->rigb.vel.x += (acc.x * dt);
-//     actor->rigb.vel.y += (acc.y * dt);
-
-//     if (actor->grounded) {
-//         actor->rigb.vel.x *= actor->rigb.fric;
-//     } else {
-//         actor->rigb.vel.x *= actor->rigb.drag;
-//         actor->rigb.vel.y *= actor->rigb.drag;
-//     }
-
-//     actor->rigb.force.x = 0.0f;
-//     actor->rigb.force.y = 0.0f;
-// }
-
-// void game_actor_colls_handle(actor_t *actor, collider_t **colls, float dt) {
-//     actor->pos.x += actor->rigb.vel.x * dt;
-//     actor->coll.min = actor->pos;
-//     actor->coll.max = vec2(actor->pos.x + (GAME_ACTOR_SPRITE_SCALE * 48.0f), actor->pos.y + (GAME_ACTOR_SPRITE_SCALE * 48.0f));
-//     actor->coll.mask = GAME_COLL_NONE;
-//     actor->grounded = 0;
-
-//     // for (uint32_t i = 0; colls[i] != NULL; i++) // works well with: collider_t *pcolls[3] = {&a, &b, NULL};
-//     for (uint32_t i = 0; i < 2; i++) {
-//         if (game_collider_aabb_check(&actor->coll, colls[i])) {
-//             if (actor->rigb.vel.x > 0) {
-//                 // it glitches when trying to get on top of collider
-//                 actor->pos.x = colls[i]->min.x - (GAME_ACTOR_SPRITE_SCALE * 48.0f);
-//                 actor->coll.mask |= GAME_COLL_RIGHT;
-//             } else if (actor->rigb.vel.x < 0) {
-//                 actor->pos.x = colls[i]->max.x;
-//                 actor->coll.mask |= GAME_COLL_LEFT;
-//             }
-//             actor->rigb.vel.x = 0.0f;
-//         }
-//     }
-
-//     actor->pos.y += actor->rigb.vel.y * dt;
-//     actor->coll.min = actor->pos;
-//     actor->coll.max = vec2(actor->pos.x + (GAME_ACTOR_SPRITE_SCALE * 48.0f), actor->pos.y + (GAME_ACTOR_SPRITE_SCALE * 48.0f));
-
-//     for (uint32_t i = 0; i < 2; i++) {
-//         if (game_collider_aabb_check(&actor->coll, colls[i])) {
-//             if (actor->rigb.vel.y > 0) {
-//                 actor->pos.y = colls[i]->min.y - (GAME_ACTOR_SPRITE_SCALE * 48.0f);
-//                 actor->coll.mask |= GAME_COLL_TOP;
-//             } else if (actor->rigb.vel.y < 0) {
-//                 actor->pos.y = colls[i]->max.y;
-//                 actor->coll.mask |= GAME_COLL_BOTTOM;
-//                 actor->jumped = 0;
-//                 actor->grounded = 1;
-//             }
-//             actor->rigb.vel.y = 0.0f;
-//         }
-//     }
-// }
-
 typedef struct {
     vec2_t pos;
     rigidbody_t rigb;
@@ -1043,36 +968,6 @@ typedef struct {
     uint8_t used;
     uint8_t flip;
 } bullet_t;
-
-// void game_bullet_move(bullet_t *bullet, float dt) {
-//     vec2_t acc = vec2(
-//         bullet->rigb.force.x / bullet->rigb.mass,
-//         (bullet->rigb.force.y / bullet->rigb.mass) + (GAME_LEVEL_GRAVITY * bullet->rigb.grav)
-//     );
-
-//     bullet->rigb.vel.x = (bullet->rigb.vel.x + acc.x * dt) * bullet->rigb.drag;
-//     bullet->rigb.vel.y = (bullet->rigb.vel.y + acc.y * dt) * bullet->rigb.drag;
-
-//     bullet->rigb.force.x -= (bullet->flip ? 64.0f : -64.0f);
-// }
-
-// void game_bullet_colls_handle(bullet_t *bullet, collider_t **colls, float dt) { // it has to rewritten (ray betwen pos and prev pos)
-//     bullet->pos.x += bullet->rigb.vel.x * dt;
-//     bullet->coll.min = bullet->pos;
-//     bullet->coll.max = vec2(bullet->pos.x + (GAME_ACTOR_SPRITE_SCALE * 8.0f), bullet->pos.y + (GAME_ACTOR_SPRITE_SCALE * 4.0f));
-//     bullet->coll.mask = GAME_COLL_NONE;
-
-//     for (uint32_t i = 0; i < 2; i++) {
-//         if (game_collider_aabb_check(&bullet->coll, colls[i])) {
-//             if (bullet->shooter->coll.min.x == colls[i]->min.x
-//                 && bullet->shooter->coll.min.y == colls[i]->min.y
-//                 && bullet->shooter->coll.max.x == colls[i]->max.x
-//                 && bullet->shooter->coll.max.y == colls[i]->max.y) continue;
-
-//             bullet->used = 0;
-//         }
-//     }
-// }
 
 typedef enum {
     GAME_STATE_LOAD = 0,
@@ -1408,8 +1303,12 @@ void game_level_reset(void) {
     game_actor_trans(&context.game.player, vec2(150.0f, 100.0f), vec2(0.0f, 0.0f));
     game_actor_trans(&context.game.enemy, vec2(450.0f, 100.0f), vec2(0.0f, 0.0f));
 
+
     context.game.player.alive = 1;
+    context.game.player.flip = 0;
+
     context.game.enemy.alive = 1;
+    context.game.enemy.flip = 1;
 
     for (uint32_t i = 0; i < GAME_LEVEL_BULLET_ARRAY_SIZE; i++) context.game.level.bullets[i].used = 0;
 
@@ -1418,10 +1317,17 @@ void game_level_reset(void) {
 
 void game_actor_move(actor_t *actor, float xacc, uint8_t jump, uint8_t crouch) {
     if (actor->pos.x <= 0.0f) actor->pos.x = 0.0f;
-    else if (actor->pos.x >= (WINDOW_WIDTH - (GAME_ACTOR_SPRITE_SCALE * 48.0f))) actor->pos.x = (WINDOW_WIDTH - (GAME_ACTOR_SPRITE_SCALE * 48.0f));
+    else if (actor->pos.x >= (WINDOW_WIDTH - actor->sprites[actor->action].size.x)) actor->pos.x = (WINDOW_WIDTH - actor->sprites[actor->action].size.x);
 
     // left player: if (player.pos.x > WINDOW_WIDTH / 2.0f - 48.0f) player.pos.x = WINDOW_WIDTH / 2.0f - 48.0f;
     // right player: if (enemy.pos.x < WINDOW_WIDTH / 2.0f) enemy.pos.x = WINDOW_WIDTH / 2.0f;
+
+    if (crouch) {
+        actor->crouched = 1;
+        xacc = 0.0f;
+    } else {
+        actor->crouched = 0;
+    }
 
     if (xacc < 0) actor->flip = 1;
     else if (xacc > 0) actor->flip = 0;
@@ -1461,7 +1367,8 @@ void game_actor_colls_handle(actor_t *actor, collider_t **colls) {
 
     actor->pos.x += actor->rigb.vel.x * context.ticker.time_between_frames;
     actor->coll.min = actor->pos;
-    actor->coll.max = vec2(actor->pos.x + (GAME_ACTOR_SPRITE_SCALE * 48.0f), actor->pos.y + (GAME_ACTOR_SPRITE_SCALE * 48.0f));
+    if (actor->crouched) actor->coll.max = vec2(actor->pos.x + actor->sprites[actor->action].size.x, actor->pos.y + (actor->sprites[actor->action].size.y / 2));
+    else actor->coll.max = vec2(actor->pos.x + actor->sprites[actor->action].size.x, actor->pos.y + actor->sprites[actor->action].size.y);
     actor->coll.mask = GAME_COLL_NONE;
     actor->grounded = 0;
 
@@ -1698,17 +1605,15 @@ void _game_keyboard_handle(void) { // it has to rewritten as well (try to handle
 
 void game_ml_init(void) {
     
-    float *netmem[5] = {
+    float *memregs[5] = {
         mem_arena_alloc(&context.arena, GAME_ML_INPUTS * GAME_ML_HIDDEN_NEURONS * sizeof(float)),
         mem_arena_alloc(&context.arena, GAME_ML_HIDDEN_NEURONS * sizeof(float)),
         mem_arena_alloc(&context.arena, GAME_ML_OUTPUTS * GAME_ML_HIDDEN_NEURONS * sizeof(float)),
         mem_arena_alloc(&context.arena, GAME_ML_OUTPUTS * sizeof(float)),
         mem_arena_alloc(&context.arena, GAME_ML_HIDDEN_NEURONS * sizeof(float))
     };
-    ml_network_init(&context.ml.network, netmem, GAME_ML_HIDDEN_NEURONS, GAME_ML_INPUTS, GAME_ML_OUTPUTS);
 
-    // float *trajmem = mem_arena_alloc(&context.arena, ML_EPISODE_STEPS * GAME_ML_INPUTS * sizeof(float));
-    // ml_trajectory_init(&context.ml.trajectory, trajmem, GAME_ML_INPUTS);
+    ml_network_init(&context.ml.network, memregs, GAME_ML_HIDDEN_NEURONS, GAME_ML_INPUTS, GAME_ML_OUTPUTS);
 
     vec4_t size = vec4(
         GAME_ML_INPUTS * GAME_ML_HIDDEN_NEURONS,
@@ -1716,6 +1621,7 @@ void game_ml_init(void) {
         GAME_ML_OUTPUTS * GAME_ML_HIDDEN_NEURONS,
         GAME_ML_OUTPUTS
     );
+
     context.ml.region = mem_arena_alloc(&context.arena, ((size.x + size.y + size.z + size.w) + (GAME_ML_OUTPUTS * 2) + (GAME_ML_HIDDEN_NEURONS * 3) + (size.z * 2) + GAME_ML_INPUTS + (GAME_ML_INPUTS * GAME_ML_HIDDEN_NEURONS)) * sizeof(float));
 
 }
@@ -1777,9 +1683,7 @@ void game_ml_step(actor_t *actor, actor_t *enemy, ml_trajectory_t *traj, float d
         };
 
         for (uint32_t i = 0; i < GAME_LEVEL_BULLET_ARRAY_SIZE; i++) { // is uint32_t bad as a loop index?
-            if (!context.game.level.bullets[i].used) {
-                context.game.level.bullets[i] = bullet; break;
-            }
+            if (!context.game.level.bullets[i].used) {context.game.level.bullets[i] = bullet; break;}
         }
 
         actor->cooldown = 60;
@@ -1851,7 +1755,7 @@ void game_init(void) {
 
     texture_init(&context.resources.textures[2], "res/texture/level/tile.png");
 
-    texture_init(&context.resources.textures[3], "res/texture/player/punk_idle.png");
+    texture_init(&context.resources.textures[3], "res/texture/player/punk_idle-2.png");
     texture_init(&context.resources.textures[4], "res/texture/player/punk_jump.png");
     texture_init(&context.resources.textures[5], "res/texture/player/punk_double_jump.png");
     texture_init(&context.resources.textures[6], "res/texture/player/punk_run.png");
@@ -1859,7 +1763,7 @@ void game_init(void) {
     texture_init(&context.resources.textures[8], "res/texture/player/punk_attack.png");
     texture_init(&context.resources.textures[9], "res/texture/player/punk_death.png");
 
-    texture_init(&context.resources.textures[10], "res/texture/enemy/cyborg_idle.png"); 
+    texture_init(&context.resources.textures[10], "res/texture/enemy/cyborg_idle-3.png"); 
     texture_init(&context.resources.textures[11], "res/texture/enemy/cyborg_jump.png");
     texture_init(&context.resources.textures[12], "res/texture/enemy/cyborg_double_jump.png");
     texture_init(&context.resources.textures[13], "res/texture/enemy/cyborg_run.png");
@@ -1890,12 +1794,13 @@ void game_init(void) {
     // actor
     context.game.player.pos = vec2(150.0f, 100.0f);
     context.game.player.rigb = (rigidbody_t) {.vel = vec2(0.0f, 0.0f), .force = vec2(0.0f, 0.0f), .mass = 1.0f, .grav = 1.0f, .fric = 0.9f, .drag = 0.94f, .bounce = 0.0f};
-    context.game.player.coll = (collider_t) {.min = vec2(150.0f, 100.0f), .max = vec2(150.0f + (GAME_ACTOR_SPRITE_SCALE * 48.0f), 100.0f + (GAME_ACTOR_SPRITE_SCALE * 48.0f)), .mask = GAME_COLL_NONE};
+    context.game.player.coll = (collider_t) {.min = vec2(150.0f, 100.0f), .max = vec2(150.0f + (GAME_ACTOR_SPRITE_SCALE * 17.0f), 100.0f + (GAME_ACTOR_SPRITE_SCALE * 34.0f)), .mask = GAME_COLL_NONE};
     context.game.player.sprites = mem_arena_alloc(&context.arena, GAME_ACTOR_SPRITE_ARRAY_SIZE * sizeof(sprite_t));
     context.game.player.action = ACTOR_ACTION_IDLE;
     context.game.player.animation = (actor_animation_t) {.step = ACTOR_ANIMATION_STEP_4, .tick = 0, .lock = 0};
     context.game.player.cooldown = 0;
     context.game.player.alive = 1;
+    context.game.player.crouched = 0;
     context.game.player.jumped = 0;
     context.game.player.grounded = 0;
     context.game.player.flip = 0;
@@ -1903,7 +1808,7 @@ void game_init(void) {
     context.game.player.deaths = 0;
 
     // sprite_init(&sprite, "punk_run", ..);
-    sprite_init(&context.game.player.sprites[0], &context.resources.textures[3], vec2(0.25f, 1.0f), vec2(0.0f, 0.0f), vec2(0.0f, 0.0f), vec2(GAME_ACTOR_SPRITE_SCALE * 48.0f, GAME_ACTOR_SPRITE_SCALE * 48.0f), 0.0f, vec3(1.0f, 1.0f, 1.0f), 0, 0); // idle
+    sprite_init(&context.game.player.sprites[0], &context.resources.textures[3], vec2(1.0f, 1.0f), vec2(0.0f, 0.0f), vec2(0.0f, 0.0f), vec2(GAME_ACTOR_SPRITE_SCALE * 17.0f, GAME_ACTOR_SPRITE_SCALE * 34.0f), 0.0f, vec3(1.0f, 1.0f, 1.0f), 0, 0); // idle
     // sprite_init(&context.game.player.sprites[1], &context.resources.textures[4], vec2(0.0f, 0.0f), vec2(48.0f * GAME_ACTOR_SPRITE_SCALE, 48.0f * GAME_ACTOR_SPRITE_SCALE), 0.0f, vec2(0.25f, 1.0f), vec2(0.25f, 0.0f), vec3(1.0f, 1.0f, 1.0f), 0); // jump
     // sprite_init(&context.game.player.sprites[2], &context.resources.textures[5], vec2(0.0f, 0.0f), vec2(48.0f * GAME_ACTOR_SPRITE_SCALE, 48.0f * GAME_ACTOR_SPRITE_SCALE), 0.0f, vec2(0.167f, 1.0f), vec2(0.167f, 0.0f), vec3(1.0f, 1.0f, 1.0f), 0); // double jump
     // sprite_init(&context.game.player.sprites[3], &context.resources.textures[6], vec2(0.0f, 0.0f), vec2(48.0f * GAME_ACTOR_SPRITE_SCALE, 48.0f * GAME_ACTOR_SPRITE_SCALE), 0.0f, vec2(0.167f, 1.0f), vec2(0.167f, 0.0f), vec3(1.0f, 1.0f, 1.0f), 0); // run
@@ -1913,19 +1818,20 @@ void game_init(void) {
 
     context.game.enemy.pos = vec2(450.0f, 100.0f);
     context.game.enemy.rigb = (rigidbody_t) {.vel = vec2(0.0f, 0.0f), .force = vec2(0.0f, 0.0f), .mass = 1.0f, .grav = 1.0f, .fric = 0.9f, .drag = 0.94f, .bounce = 0.0f};
-    context.game.enemy.coll = (collider_t) {.min = vec2(450.0f, 100.0f), .max = vec2(450.0f + (GAME_ACTOR_SPRITE_SCALE * 48.0f), 100.0f + (GAME_ACTOR_SPRITE_SCALE * 48.0f)), .mask = GAME_COLL_NONE};
+    context.game.enemy.coll = (collider_t) {.min = vec2(450.0f, 100.0f), .max = vec2(450.0f + (GAME_ACTOR_SPRITE_SCALE * 20.0f), 100.0f + (GAME_ACTOR_SPRITE_SCALE * 35.0f)), .mask = GAME_COLL_NONE};
     context.game.enemy.sprites = mem_arena_alloc(&context.arena, GAME_ACTOR_SPRITE_ARRAY_SIZE * sizeof(sprite_t));
     context.game.enemy.action = ACTOR_ACTION_IDLE;
     context.game.enemy.animation = (actor_animation_t) {.step = ACTOR_ANIMATION_STEP_4, .tick = 0, .lock = 0};
     context.game.enemy.cooldown = 0;
     context.game.enemy.alive = 1;
     context.game.enemy.jumped = 0;
+    context.game.enemy.crouched = 0;
     context.game.enemy.grounded = 0;
     context.game.enemy.flip = 1;
     context.game.enemy.kills = 0;
     context.game.enemy.deaths = 0;
 
-    sprite_init(&context.game.enemy.sprites[0], &context.resources.textures[10], vec2(0.25f, 1.0f), vec2(0.0f, 0.0f), vec2(0.0f, 0.0f), vec2(GAME_ACTOR_SPRITE_SCALE * 48.0f, GAME_ACTOR_SPRITE_SCALE * 48.0f), 0.0f, vec3(1.0f, 1.0f, 1.0f), 0, 0); // idle
+    sprite_init(&context.game.enemy.sprites[0], &context.resources.textures[10], vec2(1.0f, 1.0f), vec2(0.0f, 0.0f), vec2(0.0f, 0.0f), vec2(GAME_ACTOR_SPRITE_SCALE * 20.0f, GAME_ACTOR_SPRITE_SCALE * 35.0f), 0.0f, vec3(1.0f, 1.0f, 1.0f), 0, 0); // idle
     // sprite_init(&context.game.enemy.sprites[1], &context.resources.textures[11], vec2(0.0f, 0.0f), vec2(48.0f * GAME_ACTOR_SPRITE_SCALE, 48.0f * GAME_ACTOR_SPRITE_SCALE), 0.0f, vec2(0.25f, 1.0f), vec2(0.25f, 0.0f), vec3(1.0f, 1.0f, 1.0f), 0); // jump
     // sprite_init(&context.game.enemy.sprites[2], &context.resources.textures[12], vec2(0.0f, 0.0f), vec2(48.0f * GAME_ACTOR_SPRITE_SCALE, 48.0f * GAME_ACTOR_SPRITE_SCALE), 0.0f, vec2(0.167f, 1.0f), vec2(0.167f, 0.0f), vec3(1.0f, 1.0f, 1.0f), 0); // double jump
     // sprite_init(&context.game.enemy.sprites[3], &context.resources.textures[13], vec2(0.0f, 0.0f), vec2(48.0f * GAME_ACTOR_SPRITE_SCALE, 48.0f * GAME_ACTOR_SPRITE_SCALE), 0.0f, vec2(0.167f, 1.0f), vec2(0.167f, 0.0f), vec3(1.0f, 1.0f, 1.0f), 0); // run
@@ -1989,7 +1895,7 @@ void game_update(void) {
             if (context.game.state == GAME_STATE_PLAY) {
 
                 // ml
-                game_ml_step(&context.game.player, &context.game.enemy, &context.game.player.traj, 1.0f);
+                // game_ml_step(&context.game.player, &context.game.enemy, &context.game.player.traj, 1.0f);
                 game_ml_step(&context.game.enemy, &context.game.player, &context.game.enemy.traj, -1.0f);
 
                 // physics
@@ -2151,18 +2057,21 @@ void game_update(void) {
         shader_set_int(context.ticker.framerate.text.shader, "u_Texture", 0);
         shader_set_vec3(context.ticker.framerate.text.shader, "u_Color", vec3(1.0f, 1.0f, 1.0f));
 
-        char content[64];
-        sprintf(content, "FPS: %0.f", context.ticker.framerate.value);
-        text_draw(&context.ticker.framerate.text, content, 16.0f, (float) (WINDOW_HEIGHT - 16.0f), 2.0f);
+        // char content[64];
+        // sprintf(content, "FPS:  %0.f", context.ticker.framerate.value);
+        // text_draw(&context.ticker.framerate.text, content, 16.0f, (float) (WINDOW_HEIGHT - 16.0f), 2.0f);
 
         char stats[64];
+        sprintf(stats, "FPS:  %0.f", context.ticker.framerate.value);
+        text_draw(&context.game.level.texts[0], stats, 16.0f, (float) (WINDOW_HEIGHT - 16.0f), 2.0f);
+
         sprintf(stats, "TURN: %u", context.game.level.turn);
         text_draw(&context.game.level.texts[0], stats, 16.0f, (float) (WINDOW_HEIGHT - 32.0f), 2.0f);
 
-        sprintf(stats, "PLAYER [K/D]: %u/%u", context.game.player.kills, context.game.player.deaths);
+        sprintf(stats, "PLAYER: %u/%u [K/D]", context.game.player.kills, context.game.player.deaths);
         text_draw(&context.game.level.texts[0], stats, (float) WINDOW_WIDTH - 256.0f, (float) (WINDOW_HEIGHT - 16.0f), 2.0f);
 
-        sprintf(stats, "ENEMY  [K/D]: %u/%u", context.game.enemy.kills, context.game.enemy.deaths);
+        sprintf(stats, "ENEMY:  %u/%u [K/D]", context.game.enemy.kills, context.game.enemy.deaths);
         text_draw(&context.game.level.texts[0], stats, (float) WINDOW_WIDTH - 256.0f, (float) (WINDOW_HEIGHT - 32.0f), 2.0f);
 
         // OPENGL
