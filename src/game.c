@@ -931,6 +931,11 @@ typedef struct {
     uint8_t tick, lock;
 } actor_animation_t;
 
+typedef enum {
+    ACTOR_COOLDOWN_SHOOT = 0,
+    ACTOR_COOLDOWN_DOUBLE_JUMP = 1,
+} actor_cooldown_t;
+
 typedef struct {
     vec2_t pos;
     rigidbody_t rigb;
@@ -943,7 +948,7 @@ typedef struct {
 
     ml_trajectory_t traj;
 
-    uint16_t cooldown;
+    uint16_t cooldowns[2];
 
     uint8_t alive;
     uint8_t jumped, crouched;
@@ -1317,14 +1322,12 @@ void game_level_reset(void) {
 
 void game_actor_move(actor_t *actor, float xacc, uint8_t jump, uint8_t crouch) {
     if (actor->pos.x <= 0.0f) actor->pos.x = 0.0f;
-    else if (actor->pos.x >= (WINDOW_WIDTH - actor->sprites[actor->action].size.x)) actor->pos.x = (WINDOW_WIDTH - actor->sprites[actor->action].size.x);
-
-    // left player: if (player.pos.x > WINDOW_WIDTH / 2.0f - 48.0f) player.pos.x = WINDOW_WIDTH / 2.0f - 48.0f;
-    // right player: if (enemy.pos.x < WINDOW_WIDTH / 2.0f) enemy.pos.x = WINDOW_WIDTH / 2.0f;
+    else if (actor->pos.x >= (WINDOW_WIDTH - actor->sprites[actor->action].size.x)) {
+        actor->pos.x = (WINDOW_WIDTH - actor->sprites[actor->action].size.x);
+    }
 
     if (crouch) {
-        actor->crouched = 1;
-        xacc = 0.0f;
+        xacc = 0.0f; actor->crouched = 1;
     } else {
         actor->crouched = 0;
     }
@@ -1336,9 +1339,10 @@ void game_actor_move(actor_t *actor, float xacc, uint8_t jump, uint8_t crouch) {
 
     if (jump && actor->grounded) {
         actor->rigb.vel.y = 3072.0f;
+        actor->cooldowns[ACTOR_COOLDOWN_DOUBLE_JUMP] = 3;
         actor->jumped = 1;
         actor->grounded = 0;
-    } else if (jump && actor->jumped == 1) {
+    } else if (jump && actor->jumped == 1 && actor->cooldowns[ACTOR_COOLDOWN_DOUBLE_JUMP] == 0) {
         actor->rigb.vel.y = 4096.0f;
         actor->jumped = 2;
     }
@@ -1483,35 +1487,35 @@ void _game_keyboard_handle(void) { // it has to rewritten as well (try to handle
         }
     }
     if (!context.platform.keys[GLFW_KEY_ESCAPE]) { // quick workaround
-        if (context.game.state == GAME_STATE_RESET) {
-            context.game.state = GAME_STATE_PLAY;
-        }
+        if (context.game.state == GAME_STATE_RESET) context.game.state = GAME_STATE_PLAY;
     }
 
     if (context.game.state != GAME_STATE_PLAY) return;
 
-    float pxacc = 0.0f, exacc = 0.0f;
-    uint8_t pjump = 0, ejump = 0;
-    uint8_t pcrouch = 0, ecrouch = 0;
+    float xacc = 0.0f;
+    uint8_t jump = 0, crouch = 0;
+
+    // float pxacc = 0.0f, exacc = 0.0f;
+    // uint8_t pjump = 0, ejump = 0;
+    // uint8_t pcrouch = 0, ecrouch = 0;
 
     // KEY W
     if (context.platform.keys[GLFW_KEY_W] == 1) {
-        context.platform.keys[GLFW_KEY_W] = 2;
-        pjump = 1;
+        context.platform.keys[GLFW_KEY_W] = 2; jump = 1;
     }
 
     // KEY A
-    if (context.platform.keys[GLFW_KEY_A]) pxacc -= 1.0f;
+    if (context.platform.keys[GLFW_KEY_A]) xacc -= 1.0f;
 
     // KEY S
-    if (context.platform.keys[GLFW_KEY_S]) pcrouch = 1;
+    if (context.platform.keys[GLFW_KEY_S]) crouch = 1;
 
     // KEY D
-    if (context.platform.keys[GLFW_KEY_D]) pxacc += 1.0f;
+    if (context.platform.keys[GLFW_KEY_D]) xacc += 1.0f;
 
     // KEY F
     if (context.platform.keys[GLFW_KEY_F]) {
-        if (context.game.player.alive && context.game.player.cooldown <= 0) {
+        if (context.game.player.alive && context.game.player.cooldowns[ACTOR_COOLDOWN_SHOOT] == 0) {
 
             vec2_t pos = vec2(
                 context.game.player.flip ? context.game.player.coll.min.x : context.game.player.coll.max.x,
@@ -1534,63 +1538,22 @@ void _game_keyboard_handle(void) { // it has to rewritten as well (try to handle
                 }
             }
 
-            context.game.player.cooldown = 60;
+            context.game.player.cooldowns[ACTOR_COOLDOWN_SHOOT] = 60;
 
         }
     }
 
-    // KEY UP
-    if (context.platform.keys[GLFW_KEY_UP] == 1) {
-        context.platform.keys[GLFW_KEY_UP] = 2;
-        ejump = 1;
-    }
+    if (context.game.player.alive) game_actor_move(&context.game.player, xacc, jump, crouch);
 
-    // KEY LEFT
-    if (context.platform.keys[GLFW_KEY_LEFT]) exacc -= 1.0f;
+    // handle elsewhere
+    if (context.game.player.cooldowns[ACTOR_COOLDOWN_DOUBLE_JUMP] > 0) context.game.player.cooldowns[ACTOR_COOLDOWN_DOUBLE_JUMP]--;
+    if (context.game.enemy.cooldowns[ACTOR_COOLDOWN_DOUBLE_JUMP] > 0) context.game.enemy.cooldowns[ACTOR_COOLDOWN_DOUBLE_JUMP]--;
 
-    // KEY DOWN
-    if (context.platform.keys[GLFW_KEY_DOWN]) ecrouch = 1;
+    // this should be handled in game_bullet_move or smth like that
+    if (context.game.player.cooldowns[ACTOR_COOLDOWN_SHOOT] > 0) context.game.player.cooldowns[ACTOR_COOLDOWN_SHOOT]--;
+    if (context.game.enemy.cooldowns[ACTOR_COOLDOWN_SHOOT] > 0) context.game.enemy.cooldowns[ACTOR_COOLDOWN_SHOOT]--;
 
-    // KEY RIGHT
-    if (context.platform.keys[GLFW_KEY_RIGHT]) exacc += 1.0f;
-
-    // KEY END
-    if (context.platform.keys[GLFW_KEY_END]) {
-        if (context.game.enemy.alive && context.game.enemy.cooldown <= 0) {
-
-            vec2_t pos = vec2(
-                context.game.enemy.flip ? context.game.enemy.coll.min.x : context.game.enemy.coll.max.x,
-                context.game.enemy.coll.max.y - (GAME_ACTOR_SPRITE_SCALE * 32.0f)
-            );
-
-            bullet_t bullet = {
-                .pos = pos,
-                .rigb = (rigidbody_t) {.vel = vec2(0.0f, 0.0f), .force = vec2(context.game.enemy.flip ? -1024.0f : 1024.0f, 0.0f), .mass = 0.01f, .grav = 1.0f, .fric = 0.9f, .drag = 0.99f, .bounce = 0.4f},
-                .coll = (collider_t) {.min = pos, .max = vec2(pos.x + (GAME_ACTOR_SPRITE_SCALE * 8.0f), pos.y + (GAME_ACTOR_SPRITE_SCALE * 4.0f)), .mask = GAME_COLL_NONE},
-                .sprite = context.game.level.sprites[1],
-                .shooter = &context.game.enemy,
-                .used = 1,
-                .flip = context.game.enemy.flip
-            };
-
-            for (uint32_t i = 0; i < GAME_LEVEL_BULLET_ARRAY_SIZE; i++) { // is uint32_t bad as a loop index?
-                if (!context.game.level.bullets[i].used) {
-                    context.game.level.bullets[i] = bullet; break;
-                }
-            }
-
-            context.game.enemy.cooldown = 60;
-
-        }
-    }
-
-    if (context.game.player.alive) game_actor_move(&context.game.player, pxacc, pjump, pcrouch);
-    if (context.game.enemy.alive) game_actor_move(&context.game.enemy, exacc, ejump, ecrouch);
-
-    if (context.game.player.cooldown > 0) context.game.player.cooldown--;
-    if (context.game.enemy.cooldown > 0) context.game.enemy.cooldown--;
-
-    // movement should be handled in game_bullet_move or smth like that
+    // and this as well
     for (uint32_t i = 0; i < GAME_LEVEL_BULLET_ARRAY_SIZE; i++) {
         if (context.game.level.bullets[i].used) {
             if (context.game.level.bullets[i].coll.max.x < 0 || context.game.level.bullets[i].pos.x > WINDOW_WIDTH) {
@@ -1634,7 +1597,7 @@ void game_ml_step(actor_t *actor, actor_t *enemy, ml_trajectory_t *traj, float d
         (enemy->rigb.vel.x * dir) / 1000.0f,
         enemy->rigb.vel.y / 1000.0f,
         (float) enemy->grounded,
-        actor->cooldown > 0 ? 1.0f : 0.0f
+        actor->cooldowns[ACTOR_COOLDOWN_SHOOT] > 0 ? 1.0f : 0.0f
     };
     mat_t state = mat(inputs, 1, GAME_ML_INPUTS);
 
@@ -1665,7 +1628,7 @@ void game_ml_step(actor_t *actor, actor_t *enemy, ml_trajectory_t *traj, float d
         actor->rigb.vel.x = 0;
     }
 
-    if (shoot && actor->alive && actor->cooldown <= 0) {
+    if (shoot && actor->alive && actor->cooldowns[ACTOR_COOLDOWN_SHOOT] == 0) {
 
         vec2_t pos = vec2(
             actor->flip ? actor->coll.min.x : actor->coll.max.x,
@@ -1686,7 +1649,7 @@ void game_ml_step(actor_t *actor, actor_t *enemy, ml_trajectory_t *traj, float d
             if (!context.game.level.bullets[i].used) {context.game.level.bullets[i] = bullet; break;}
         }
 
-        actor->cooldown = 60;
+        actor->cooldowns[ACTOR_COOLDOWN_SHOOT] = 60;
 
     }
 
@@ -1798,7 +1761,6 @@ void game_init(void) {
     context.game.player.sprites = mem_arena_alloc(&context.arena, GAME_ACTOR_SPRITE_ARRAY_SIZE * sizeof(sprite_t));
     context.game.player.action = ACTOR_ACTION_IDLE;
     context.game.player.animation = (actor_animation_t) {.step = ACTOR_ANIMATION_STEP_4, .tick = 0, .lock = 0};
-    context.game.player.cooldown = 0;
     context.game.player.alive = 1;
     context.game.player.crouched = 0;
     context.game.player.jumped = 0;
@@ -1822,7 +1784,6 @@ void game_init(void) {
     context.game.enemy.sprites = mem_arena_alloc(&context.arena, GAME_ACTOR_SPRITE_ARRAY_SIZE * sizeof(sprite_t));
     context.game.enemy.action = ACTOR_ACTION_IDLE;
     context.game.enemy.animation = (actor_animation_t) {.step = ACTOR_ANIMATION_STEP_4, .tick = 0, .lock = 0};
-    context.game.enemy.cooldown = 0;
     context.game.enemy.alive = 1;
     context.game.enemy.jumped = 0;
     context.game.enemy.crouched = 0;
@@ -1895,7 +1856,7 @@ void game_update(void) {
             if (context.game.state == GAME_STATE_PLAY) {
 
                 // ml
-                // game_ml_step(&context.game.player, &context.game.enemy, &context.game.player.traj, 1.0f);
+                game_ml_step(&context.game.player, &context.game.enemy, &context.game.player.traj, 1.0f);
                 game_ml_step(&context.game.enemy, &context.game.player, &context.game.enemy.traj, -1.0f);
 
                 // physics
