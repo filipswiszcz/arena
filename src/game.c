@@ -346,12 +346,12 @@ static char GLYPHS[128][FONT_WIDTH][FONT_HEIGHT] = {
         {1, 0, 0, 1, 0},
     },
     ['S'] = {
+        {0, 1, 1, 1, 1},
+        {1, 0, 0, 0, 0},
         {0, 1, 1, 1, 0},
-        {1, 0, 0, 0, 0},
-        {1, 0, 0, 0, 0},
-        {0, 1, 1, 0, 0},
-        {0, 0, 0, 1, 0},
-        {1, 1, 1, 0, 0},
+        {0, 0, 0, 0, 1},
+        {0, 0, 0, 0, 1},
+        {1, 1, 1, 1, 0},
     },
     ['T'] = {
         {1, 1, 1, 1, 1},
@@ -1554,14 +1554,16 @@ void _game_keyboard_handle(void) { // it has to rewritten as well (try to handle
         xacc += 1.0f;
     }
 
-    // KEY F
-    if (context.platform.keys[GLFW_KEY_F]) {
-        game_actor_shoot(&context.game.player);
-    }
+    // it has to change mode from playing to simulating (because game_actor_move fires two times for player (only))
 
-    if (context.game.player.alive) {
-        game_actor_move(&context.game.player, xacc, jump, crouch);
-    }
+    // KEY F
+    // if (context.platform.keys[GLFW_KEY_F]) {
+    //     game_actor_shoot(&context.game.player);
+    // }
+
+    // if (context.game.player.alive) {
+    //     game_actor_move(&context.game.player, xacc, jump, crouch);
+    // }
 }
 
 void game_ml_init(void) {
@@ -2019,17 +2021,17 @@ void game_update(void) {
 
         char stats[64];
 
-        sprintf(stats, "GAME TURN   %u", context.game.level.turn);
+        sprintf(stats, "GAME TURN %u", context.game.level.turn);
         text_draw(&context.game.level.texts[0], stats, 16.0f, (float) (WINDOW_HEIGHT - 16.0f), 2.0f);
 
-        sprintf(stats, "PLAYER      %u/%u [K/D]", context.game.player.kills, context.game.player.deaths);
+        sprintf(stats, "PLAYER    %u/%u [K/D]", context.game.player.kills, context.game.player.deaths);
         text_draw(&context.game.level.texts[0], stats, 16.0f, (float) (WINDOW_HEIGHT - 32.0f), 2.0f);
 
-        sprintf(stats, "ENEMY       %u/%u [K/D]", context.game.enemy.kills, context.game.enemy.deaths);
+        sprintf(stats, "ENEMY     %u/%u [K/D]", context.game.enemy.kills, context.game.enemy.deaths);
         text_draw(&context.game.level.texts[0], stats, 16.0f, (float) (WINDOW_HEIGHT - 48.0f), 2.0f);
 
-        sprintf(stats, "FPS  %0.f", context.ticker.framerate.value);
-        text_draw(&context.game.level.texts[0], stats, (float) WINDOW_WIDTH - 128.0f, (float) (WINDOW_HEIGHT - 16.0f), 2.0f);
+        sprintf(stats, "FPS %0.f", context.ticker.framerate.value);
+        text_draw(&context.game.level.texts[0], stats, (float) WINDOW_WIDTH - 96.0f, (float) (WINDOW_HEIGHT - 16.0f), 2.0f);
 
         // OPENGL
         glfwSwapBuffers(context.platform.window);
