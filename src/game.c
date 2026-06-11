@@ -524,114 +524,29 @@ static char GLYPHS[128][FONT_WIDTH][FONT_HEIGHT] = {
     }
 };
 
-typedef struct {
-    shader_t *shader;
-    texture_t texture;
-    uint32_t vao, vbo;
-} text_t;
-
-void text_init(text_t *text) {
-    uint8_t bitmap[(FONT_WIDTH * 16) * (FONT_HEIGHT * 8)];
-    memset(bitmap, 0, sizeof(bitmap));
-    
-    for (uint32_t i = 0; i < 128; i++) {
-        uint32_t cpx = (i % 16) * FONT_WIDTH;
-        uint32_t cpy = (i / 16) * FONT_HEIGHT;
-        
-        for (uint32_t j = 0; j < FONT_HEIGHT; j++) {
-            for (uint32_t k = 0; k < FONT_WIDTH; k++) {
-                if (GLYPHS[i][j][k]) {
-                    uint32_t px = cpx + k;
-                    uint32_t py = cpy + j;
-                    uint32_t mrk = (py * (FONT_WIDTH * 16)) + px;
-                    bitmap[mrk] = 255;
-                }
-            }
-        }
-    }
-
-    glGenTextures(1, &text->texture.id);
-
-    glBindTexture(GL_TEXTURE_2D, text->texture.id);
-
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
-
-    glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
-    glTexImage2D(GL_TEXTURE_2D, 0, GL_RED, (FONT_WIDTH * 16), (FONT_HEIGHT * 8), 0, GL_RED, GL_UNSIGNED_BYTE, bitmap);
-
-    glGenVertexArrays(1, &text->vao);
-    glGenBuffers(1, &text->vbo);
-
-    glBindVertexArray(text->vao);
-
-    glBindBuffer(GL_ARRAY_BUFFER, text->vbo);
-    glBufferData(GL_ARRAY_BUFFER, 256 * 6 * 4 * sizeof(float), NULL, GL_DYNAMIC_DRAW);
-
-    glEnableVertexAttribArray(0);
-    glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, sizeof(vec4_t), (void*) 0);
-
-    glEnableVertexAttribArray(1);
-    glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, sizeof(vec4_t), (void*) (sizeof(vec2_t)));
-
-    glBindBuffer(GL_ARRAY_BUFFER, 0);
-    glBindVertexArray(0);
-}
-
-void text_draw(text_t *text, char *content, float x, float y, float scale) {
-#ifdef _WIN32
-    vec4_t vertices[128 * 6];
-#else
-    vec4_t vertices[strlen(content) * 6];
-#endif
-    uint32_t c = 0;
-
-    float cx = x;
-    for (uint32_t i = 0; i < strlen(content); i++) {
-        float col = (float) (content[i] % 16);
-        float row = (float) (content[i] / 16);
-
-        float umin = col / 16.0f;
-        float vmin = row / 8.0f;
-        float umax = (col + 1.0f) / 16.0f;
-        float vmax = (row + 1.0f) / 8.0f;
-
-        float sx = cx;
-        float sy = y;
-        float w = FONT_WIDTH * scale;
-        float h = FONT_HEIGHT * scale;
-
-        vertices[c++] = vec4(sx, sy + h, umin, vmin);
-        vertices[c++] = vec4(sx, sy, umin, vmax);
-        vertices[c++] = vec4(sx + w, sy, umax, vmax);
-
-        vertices[c++] = vec4(sx, sy + h, umin, vmin);
-        vertices[c++] = vec4(sx + w, sy, umax, vmax);
-        vertices[c++] = vec4(sx + w, sy + h, umax, vmin);
-
-        cx += w;
-    }
-
-    glBindVertexArray(text->vao);
-    glBindBuffer(GL_ARRAY_BUFFER, text->vbo);
-
-    glActiveTexture(GL_TEXTURE0);
-    glBindTexture(GL_TEXTURE_2D, text->texture.id);
-
-    glBufferSubData(GL_ARRAY_BUFFER, 0, sizeof(vertices), vertices);
-
-    glDrawArrays(GL_TRIANGLES, 0, strlen(content) * 6);
-    glBindVertexArray(0);
-}
-
 // RENDERER
 
-typedef struct command {
-    texture_t *texture;
+typedef enum {
+    COMMAND_TYPE_SPRITE,
+    COMMAND_TYPE_TEXT
+} command_type_t;
 
-    struct {
-        vec2_t scale, offset;
-    } uv;
+typedef struct command {
+    command_type_t type;
+
+    union {
+        struct {
+            texture_t *texture;
+            struct {
+                vec2_t scale, offset;
+            } uv;
+        } sprite;
+
+        struct {
+            char content[64];
+            float scale;
+        } text;
+    } data;
 
     vec2_t pos, size;
     float rot;
@@ -653,16 +568,68 @@ typedef struct renderer {
     uint32_t vao, vbo;
 
     struct {
+        shader_t *shader;
+        texture_t texture;
+        uint32_t vao, vbo;
+    } text;
+
+    struct {
         shader_t *shaders[2]; // crt, glitch
         texture_t textures[2];
         uint32_t fbos[2];
     } postprocessing;
 
-    text_t *texts;
-
     double time;
 
 } renderer_t;
+
+void _renderer_text_init(renderer_t *renderer) {
+    uint8_t bitmap[(FONT_WIDTH * 16) * (FONT_HEIGHT * 8)];
+    memset(bitmap, 0, sizeof(bitmap));
+    
+    for (uint32_t i = 0; i < 128; i++) {
+        uint32_t cpx = (i % 16) * FONT_WIDTH;
+        uint32_t cpy = (i / 16) * FONT_HEIGHT;
+        
+        for (uint32_t j = 0; j < FONT_HEIGHT; j++) {
+            for (uint32_t k = 0; k < FONT_WIDTH; k++) {
+                if (GLYPHS[i][j][k]) {
+                    uint32_t px = cpx + k;
+                    uint32_t py = cpy + j;
+                    uint32_t mrk = (py * (FONT_WIDTH * 16)) + px;
+                    bitmap[mrk] = 255;
+                }
+            }
+        }
+    }
+
+    glGenTextures(1, &renderer->text.texture.id);
+
+    glBindTexture(GL_TEXTURE_2D, renderer->text.texture.id);
+
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+
+    glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RED, (FONT_WIDTH * 16), (FONT_HEIGHT * 8), 0, GL_RED, GL_UNSIGNED_BYTE, bitmap);
+
+    glGenVertexArrays(1, &renderer->text.vao);
+    glGenBuffers(1, &renderer->text.vbo);
+
+    glBindVertexArray(renderer->text.vao);
+
+    glBindBuffer(GL_ARRAY_BUFFER, renderer->text.vbo);
+    glBufferData(GL_ARRAY_BUFFER, 256 * 6 * 4 * sizeof(float), NULL, GL_DYNAMIC_DRAW);
+
+    glEnableVertexAttribArray(0);
+    glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, sizeof(vec4_t), (void*) 0);
+
+    glEnableVertexAttribArray(1);
+    glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, sizeof(vec4_t), (void*) (sizeof(vec2_t)));
+
+    glBindBuffer(GL_ARRAY_BUFFER, 0);
+    glBindVertexArray(0);
+}
 
 void _renderer_postprocess_init(renderer_t *renderer) {
     for (uint32_t i = 0; i < 2; i++) {
@@ -694,9 +661,9 @@ void _renderer_postprocess_init(renderer_t *renderer) {
 void renderer_init(renderer_t *renderer, shader_t *shaders) {
 
     renderer->shader = &shaders[0]; // sprite
-    renderer->postprocessing.shaders[0] = &shaders[1]; // crt
-    renderer->postprocessing.shaders[1] = &shaders[3]; // glitch
-    // renderer->texts[0].shader = &shaders[2]; // text
+    renderer->text.shader = &shaders[1]; // text
+    renderer->postprocessing.shaders[0] = &shaders[2]; // crt
+    // renderer->postprocessing.shaders[1] = &shaders[3]; // glitch
 
     vec4_t vertices[] = {
         vec4(0.0f, 1.0f, 0.0f, 1.0f), vec4(1.0f, 0.0f, 1.0f, 0.0f), vec4(0.0f, 0.0f, 0.0f, 0.0f), 
@@ -719,23 +686,20 @@ void renderer_init(renderer_t *renderer, shader_t *shaders) {
     glBindBuffer(GL_ARRAY_BUFFER, 0);
     glBindVertexArray(0);
 
+    // TEXT
+    _renderer_text_init(renderer);
+
     // POST-PROCESSING
     _renderer_postprocess_init(renderer);
-
-    // TEXTS
-    // alloc text array
 
     // PROJECTION
     mat4_t projection = mat4_ortho(0.0f, (float) WINDOW_WIDTH, (float) WINDOW_HEIGHT, 0.0f, -1.0f, 1.0f);
 
-    shader_use(renderer->shader); // sprite
+    shader_use(renderer->shader);
     shader_set_mat4(renderer->shader, "u_Projection", projection);
 
-    // shader_use(renderer->texts[0].shader); // text
-    // shader_set_mat4(renderer->texts[0].shader, "u_Projection", projection);
-
-    shader_use(&shaders[2]); // text
-    shader_set_mat4(&shaders[2], "u_Projection", projection);
+    shader_use(renderer->text.shader);
+    shader_set_mat4(renderer->text.shader, "u_Projection", projection);
 
 }
 
@@ -750,13 +714,14 @@ void renderer_frame_clear(renderer_t *renderer) { // i have to find out, if it c
 }
 
 void _renderer_sprite_draw(renderer_t *renderer, texture_t *texture, vec4_t uv, vec4_t trans, float rot, vec3_t color, uint8_t flip) {
-    
     mat4_t model = mat4(1.0f);
     model = mat4_trans(model, vec3(trans.x, trans.y, 0.0f));
     model = mat4_trans(model, vec3(trans.z * 0.5f, trans.w * 0.5f, 0.0f)); // what does it do? cant remember
     model = mat4_trans(model, vec3(trans.z * (-0.5f), trans.w * (-0.5f), 0.0f)); // same here?
     model = mat4_scale(model, vec3(trans.z, trans.w, 1.0f));
     // rotation??
+
+    shader_use(renderer->shader); // here?
 
     shader_set_mat4(renderer->shader, "u_Model", model);
 
@@ -776,11 +741,61 @@ void _renderer_sprite_draw(renderer_t *renderer, texture_t *texture, vec4_t uv, 
     glBindVertexArray(renderer->vao);
     glDrawArrays(GL_TRIANGLES, 0, 6);
     glBindVertexArray(0);
+}
 
+void _renderer_text_draw(renderer_t *renderer, char *content, float x, float y, float scale, vec3_t color) {
+// #ifdef _WIN32
+    vec4_t vertices[128 * 6];
+// #else
+//     vec4_t vertices[strlen(content) * 6];
+// #endif
+    uint32_t c = 0;
+
+    float cx = x;
+    for (uint32_t i = 0; i < strlen(content); i++) {
+        float col = (float) (content[i] % 16);
+        float row = (float) (content[i] / 16);
+
+        float umin = col / 16.0f;
+        float vmin = row / 8.0f;
+        float umax = (col + 1.0f) / 16.0f;
+        float vmax = (row + 1.0f) / 8.0f;
+
+        float sx = cx;
+        float sy = y;
+        float w = FONT_WIDTH * scale;
+        float h = FONT_HEIGHT * scale;
+
+        vertices[c++] = vec4(sx, sy + h, umin, vmin);
+        vertices[c++] = vec4(sx, sy, umin, vmax);
+        vertices[c++] = vec4(sx + w, sy, umax, vmax);
+
+        vertices[c++] = vec4(sx, sy + h, umin, vmin);
+        vertices[c++] = vec4(sx + w, sy, umax, vmax);
+        vertices[c++] = vec4(sx + w, sy + h, umax, vmin);
+
+        cx += w;
+    }
+
+    glBindVertexArray(renderer->text.vao);
+    glBindBuffer(GL_ARRAY_BUFFER, renderer->text.vbo);
+
+    shader_use(renderer->text.shader);
+    shader_set_int(renderer->text.shader, "u_Texture", 0);
+    // shader_set_vec3(renderer->text.shader, "u_Color", vec3(1.0f, 1.0f, 1.0f));
+    shader_set_vec3(renderer->text.shader, "u_Color", color);
+
+    glActiveTexture(GL_TEXTURE0);
+    texture_bind(&renderer->text.texture);
+    // glBindTexture(GL_TEXTURE_2D, renderer->text.texture.id);
+
+    glBufferSubData(GL_ARRAY_BUFFER, 0, sizeof(vertices), vertices); // here?
+
+    glDrawArrays(GL_TRIANGLES, 0, strlen(content) * 6);
+    glBindVertexArray(0);
 }
 
 void _renderer_postprocess_draw(renderer_t *renderer) {
-
     uint32_t mrk = 0;
     for (uint32_t i = 0; i < 2; i++) { // loop postprocess shaders
         if (i == 1) glBindFramebuffer(GL_FRAMEBUFFER, 0); // last loop
@@ -812,35 +827,37 @@ void _renderer_postprocess_draw(renderer_t *renderer) {
 
         mrk = mrk ? 0 : 1;
     }
-
 }
 
 void renderer_draw(renderer_t *renderer) {
-
     glBindFramebuffer(GL_FRAMEBUFFER, renderer->postprocessing.fbos[0]);
     glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
     glClear(GL_COLOR_BUFFER_BIT);
 
-    shader_use(renderer->shader);
     for (uint32_t i = 0; i < renderer->frame.counter; i++) {
-        _renderer_sprite_draw(
-            renderer, 
-            renderer->frame.commands[i].texture, 
-            vec4(renderer->frame.commands[i].uv.scale.x, renderer->frame.commands[i].uv.scale.y, renderer->frame.commands[i].uv.offset.x, renderer->frame.commands[i].uv.offset.y), 
-            vec4(renderer->frame.commands[i].pos.x, renderer->frame.commands[i].pos.y, renderer->frame.commands[i].size.x, renderer->frame.commands[i].size.y), 
-            renderer->frame.commands[i].rot, 
-            renderer->frame.commands[i].color, 
-            renderer->frame.commands[i].flip
-        );        
+        if (renderer->frame.commands[i].type == COMMAND_TYPE_SPRITE) {
+            _renderer_sprite_draw(
+                renderer,
+                renderer->frame.commands[i].data.sprite.texture,
+                vec4(renderer->frame.commands[i].data.sprite.uv.scale.x, renderer->frame.commands[i].data.sprite.uv.scale.y, renderer->frame.commands[i].data.sprite.uv.offset.x, renderer->frame.commands[i].data.sprite.uv.offset.y),
+                vec4(renderer->frame.commands[i].pos.x, renderer->frame.commands[i].pos.y, renderer->frame.commands[i].size.x, renderer->frame.commands[i].size.y),
+                renderer->frame.commands[i].rot,
+                renderer->frame.commands[i].color,
+                renderer->frame.commands[i].flip
+            );
+        } else {
+            _renderer_text_draw(
+                renderer,
+                renderer->frame.commands[i].data.text.content,
+                renderer->frame.commands[i].pos.x,
+                renderer->frame.commands[i].pos.y,
+                renderer->frame.commands[i].data.text.scale,
+                renderer->frame.commands[i].color
+            );
+        }
     }
 
-    // render text
-        // if i want to postprocess text as well
-
     _renderer_postprocess_draw(renderer);
-
-        // if not, then here
-    
 }
 
 // GAME
@@ -848,13 +865,13 @@ void renderer_draw(renderer_t *renderer) {
 #define GAME_SIMULATION_FIXED_TIMESTEP (1.0f / 60.0f) // 60 fps
 #define GAME_ANIMATION_FIXED_TIMESTEP (1.0f / 8.0f) // 8 fps
 
-#define GAME_MEMORY_CAPACITY (64 * 1024 * 1024) // 64 MB
+#define GAME_MEMORY_CAPACITY (2 * 1024 * 1024) // 2 MB
 uint8_t GAME_MEMORY[GAME_MEMORY_CAPACITY];
 
 #define GAME_RESOURCES_SHADER_ARRAY_SIZE 4
 #define GAME_RESOURCES_TEXTURE_ARRAY_SIZE 32
 
-#define GAME_RENDERER_COMMAND_ARRAY_SIZE 16
+#define GAME_RENDERER_COMMAND_ARRAY_SIZE 64
 
 #define GAME_LEVEL_GRAVITY -19200.0f
 
@@ -1005,7 +1022,7 @@ static struct {
             double value;
             double timer;
             uint32_t counter;
-            text_t text;
+            // text_t text;
         } framerate;
 
     } ticker;
@@ -1032,7 +1049,7 @@ static struct {
             collider_t b;
             // // end of temp
 
-            text_t *texts;
+            // text_t *texts;
 
             bullet_t *bullets;
 
@@ -1305,10 +1322,11 @@ void _game_keyboard_callback(GLFWwindow *window, int32_t key, int32_t scan, int3
 void game_level_save(void) {}
 
 void game_level_reset(void) {
+    context.game.state = GAME_STATE_RESET;
+
     // move to spawn pos
     game_actor_trans(&context.game.player, vec2(150.0f, 100.0f), vec2(0.0f, 0.0f));
     game_actor_trans(&context.game.enemy, vec2(450.0f, 100.0f), vec2(0.0f, 0.0f));
-
 
     context.game.player.alive = 1;
     context.game.player.flip = 0;
@@ -1521,7 +1539,7 @@ void _game_keyboard_handle(void) { // it has to rewritten as well (try to handle
     // KEY ESC (reset)
     if (context.platform.keys[GLFW_KEY_ESCAPE]) {
         if (context.game.state != GAME_STATE_RESET) {
-            context.game.state = GAME_STATE_RESET;
+            // context.game.state = GAME_STATE_RESET;
             game_level_reset();
         }
     }
@@ -1684,9 +1702,9 @@ void game_init(void) {
     // RESOURCES
     context.resources.shaders = mem_arena_alloc(&context.arena, GAME_RESOURCES_SHADER_ARRAY_SIZE * sizeof(shader_t));
     shader_init(&context.resources.shaders[0], "res/shader/sprite.vs", "res/shader/sprite.fs");
-    shader_init(&context.resources.shaders[1], "res/shader/crt.vs", "res/shader/crt.fs");
-    // shader_init(&context.resources.shaders[2], "res/shader/glitch.vs", "res/shader/glitch.fs");
-    shader_init(&context.resources.shaders[2], "res/shader/text.vs", "res/shader/text.fs");
+    shader_init(&context.resources.shaders[1], "res/shader/text.vs", "res/shader/text.fs");
+    shader_init(&context.resources.shaders[2], "res/shader/crt.vs", "res/shader/crt.fs");
+    // shader_init(&context.resources.shaders[3], "res/shader/glitch.vs", "res/shader/glitch.fs");
 
     // TODO read it auto, and search it by name (only in init)
     context.resources.textures = mem_arena_alloc(&context.arena, GAME_RESOURCES_TEXTURE_ARRAY_SIZE * sizeof(texture_t));
@@ -1718,7 +1736,6 @@ void game_init(void) {
     // GAME
     context.game.state = GAME_STATE_LOAD;
     context.game.level.sprites = mem_arena_alloc(&context.arena, GAME_LEVEL_SPRITE_ARRAY_SIZE * sizeof(sprite_t));
-    context.game.level.texts = mem_arena_alloc(&context.arena, GAME_LEVEL_TEXT_ARRAY_SIZE * sizeof(text_t));
     context.game.level.bullets = mem_arena_alloc(&context.arena, GAME_LEVEL_BULLET_ARRAY_SIZE * sizeof(bullet_t));
     for (uint32_t i = 0; i < GAME_LEVEL_BULLET_ARRAY_SIZE; i++) context.game.level.bullets[i] = (bullet_t) {0}; // is there a cooler way to init this?
     context.game.level.turn = 0;
@@ -1784,11 +1801,7 @@ void game_init(void) {
     ml_trajectory_init(&context.game.enemy.traj, mem_arena_alloc(&context.arena, ML_EPISODE_STEPS * GAME_ML_INPUTS * sizeof(float)), GAME_ML_INPUTS);
 
     // TICKER
-    text_init(&context.ticker.framerate.text);
     context.ticker.time_of_last_frame = glfwGetTime();
-    context.ticker.framerate.text.shader = &context.resources.shaders[2]; // text
-
-    text_init(&context.game.level.texts[0]);
 
 #ifdef DEBUG
     printf("GAME_MEMORY: Used %.2f MB / %.2f MB (%.2f%%)\n", ((float) (context.arena.used) / (1024.0f * 1024.0f)), 
@@ -1930,8 +1943,11 @@ void game_update(void) {
 
         // level
         renderer_frame_command_push(&context.renderer, (command_t) {
-            .texture = context.game.level.sprites[2].texture,
-            .uv = {.scale = context.game.level.sprites[2].uv.scale, .offset = context.game.level.sprites[2].uv.offset},
+            .type = COMMAND_TYPE_SPRITE,
+            .data.sprite = {
+                .texture = context.game.level.sprites[2].texture,
+                .uv = {.scale = context.game.level.sprites[2].uv.scale, .offset = context.game.level.sprites[2].uv.offset}
+            },
             .pos = context.game.level.sprites[2].pos,
             .size = context.game.level.sprites[2].size,
             .rot = context.game.level.sprites[2].rot,
@@ -1944,8 +1960,11 @@ void game_update(void) {
         for (uint32_t i = 0; i < GAME_LEVEL_BULLET_ARRAY_SIZE; i++) {
             if (context.game.level.bullets[i].used) {
                 renderer_frame_command_push(&context.renderer, (command_t) {
-                    .texture = context.game.level.sprites[0].texture,
-                    .uv = {.scale = context.game.level.sprites[0].uv.scale, .offset = context.game.level.sprites[0].uv.offset},
+                    .type = COMMAND_TYPE_SPRITE,
+                    .data.sprite = {
+                        .texture = context.game.level.sprites[0].texture,
+                        .uv = {.scale = context.game.level.sprites[0].uv.scale, .offset = context.game.level.sprites[0].uv.offset}
+                    },
                     .pos = context.game.level.bullets[i].pos,
                     .size = context.game.level.sprites[0].size,
                     .rot = context.game.level.sprites[0].rot,
@@ -1958,20 +1977,31 @@ void game_update(void) {
 
         // player
         if (context.game.player.alive) {
+
+            // TEMP
+            uint8_t action = (context.game.player.action == ACTOR_ACTION_CROUCH) ? 4 : 0;
+            // TEMP
+
             renderer_frame_command_push(&context.renderer, (command_t) {
-                .texture = context.game.player.sprites[context.game.player.action].texture,
-                .uv = {.scale = context.game.player.sprites[context.game.player.action].uv.scale, .offset = context.game.player.sprites[context.game.player.action].uv.offset}, 
-                .pos = vec2_add(context.game.player.pos, context.game.player.sprites[context.game.player.action].pos),
-                .size = context.game.player.sprites[context.game.player.action].size,
-                .rot = context.game.player.sprites[context.game.player.action].rot,
-                .color = context.game.player.sprites[context.game.player.action].color,
+                .type = COMMAND_TYPE_SPRITE,
+                .data.sprite = {
+                    .texture = context.game.player.sprites[action].texture,
+                    .uv = {.scale = context.game.player.sprites[action].uv.scale, .offset = context.game.player.sprites[action].uv.offset}
+                },
+                .pos = vec2_add(context.game.player.pos, context.game.player.sprites[action].pos),
+                .size = context.game.player.sprites[action].size,
+                .rot = context.game.player.sprites[action].rot,
+                .color = context.game.player.sprites[action].color,
                 .zorder = 2,
                 .flip = context.game.player.flip
             });
 
             renderer_frame_command_push(&context.renderer, (command_t) {
-                .texture = context.game.level.sprites[1].texture, 
-                .uv = {.scale = context.game.level.sprites[1].uv.scale, .offset = context.game.level.sprites[1].uv.offset},
+                .type = COMMAND_TYPE_SPRITE,
+                .data.sprite = {
+                    .texture = context.game.level.sprites[1].texture, 
+                    .uv = {.scale = context.game.level.sprites[1].uv.scale, .offset = context.game.level.sprites[1].uv.offset}
+                },
                 .pos = vec2(context.game.player.flip ? (context.game.player.coll.min.x - (GAME_ACTOR_SPRITE_SCALE * 18.0f)) : context.game.player.coll.max.x, context.game.player.coll.max.y - (GAME_ACTOR_SPRITE_SCALE * (context.game.player.crouched ? 4.0f: 16.0f))),
                 .size = context.game.level.sprites[1].size,
                 .rot = context.game.level.sprites[1].rot,
@@ -1984,8 +2014,11 @@ void game_update(void) {
         // enemy
         if (context.game.enemy.alive) {
             renderer_frame_command_push(&context.renderer, (command_t) {
-                .texture = context.game.enemy.sprites[context.game.enemy.action].texture,
-                .uv = {.scale = context.game.enemy.sprites[context.game.enemy.action].uv.scale, .offset = context.game.enemy.sprites[context.game.enemy.action].uv.offset}, 
+                .type = COMMAND_TYPE_SPRITE,
+                .data.sprite = {
+                    .texture = context.game.enemy.sprites[context.game.enemy.action].texture,
+                    .uv = {.scale = context.game.enemy.sprites[context.game.enemy.action].uv.scale, .offset = context.game.enemy.sprites[context.game.enemy.action].uv.offset}
+                },
                 .pos = vec2_add(context.game.enemy.pos, context.game.enemy.sprites[context.game.enemy.action].pos),
                 .size = context.game.enemy.sprites[context.game.enemy.action].size,
                 .rot = context.game.enemy.sprites[context.game.enemy.action].rot,
@@ -1995,9 +2028,12 @@ void game_update(void) {
             });
 
             renderer_frame_command_push(&context.renderer, (command_t) {
-                .texture = context.game.level.sprites[1].texture,
-                .uv = {.scale = context.game.level.sprites[1].uv.scale, .offset = context.game.level.sprites[1].uv.offset},
-                .pos =  vec2(context.game.enemy.flip ? (context.game.enemy.coll.min.x - (GAME_ACTOR_SPRITE_SCALE * 18.0f)) : context.game.enemy.coll.max.x, context.game.enemy.coll.max.y - (GAME_ACTOR_SPRITE_SCALE * (context.game.enemy.crouched ? 4.0f: 16.0f))),
+                .type = COMMAND_TYPE_SPRITE,
+                .data.sprite = {
+                    .texture = context.game.level.sprites[1].texture,
+                    .uv = {.scale = context.game.level.sprites[1].uv.scale, .offset = context.game.level.sprites[1].uv.offset}
+                },
+                .pos = vec2(context.game.enemy.flip ? (context.game.enemy.coll.min.x - (GAME_ACTOR_SPRITE_SCALE * 18.0f)) : context.game.enemy.coll.max.x, context.game.enemy.coll.max.y - (GAME_ACTOR_SPRITE_SCALE * (context.game.enemy.crouched ? 4.0f: 16.0f))),
                 .size = context.game.level.sprites[1].size,
                 .rot = context.game.level.sprites[1].rot,
                 .color = context.game.level.sprites[1].color,
@@ -2006,32 +2042,33 @@ void game_update(void) {
             });
         }
 
-        renderer_draw(&context.renderer);
-
-        renderer_frame_clear(&context.renderer);
-
         // TEXT
-        shader_use(context.ticker.framerate.text.shader);
-        shader_set_int(context.ticker.framerate.text.shader, "u_Texture", 0);
-        shader_set_vec3(context.ticker.framerate.text.shader, "u_Color", vec3(1.0f, 1.0f, 1.0f));
+        command_t command = {0};
+        command.type = COMMAND_TYPE_TEXT;
+        command.data.text.scale = 2.0f;
+        command.rot = 0.0f;
+        command.color = vec3(1.0f, 1.0f, 1.0f);
+        command.zorder = 4;
+        command.flip = 0;
 
-        // char content[64];
-        // sprintf(content, "FPS:  %0.f", context.ticker.framerate.value);
-        // text_draw(&context.ticker.framerate.text, content, 16.0f, (float) (WINDOW_HEIGHT - 16.0f), 2.0f);
+        command.pos = vec2(16.0f, (float) (WINDOW_HEIGHT - 16.0f));
+        sprintf(command.data.text.content, "GAME TURN %u", context.game.level.turn);
+        renderer_frame_command_push(&context.renderer, command);
 
-        char stats[64];
+        command.pos = vec2(16.0f, (float)(WINDOW_HEIGHT - 32.0f));
+        sprintf(command.data.text.content, "PLAYER    %u/%u [K/D]", context.game.player.kills, context.game.player.deaths);
+        renderer_frame_command_push(&context.renderer, command);
 
-        sprintf(stats, "GAME TURN %u", context.game.level.turn);
-        text_draw(&context.game.level.texts[0], stats, 16.0f, (float) (WINDOW_HEIGHT - 16.0f), 2.0f);
+        command.pos = vec2(16.0f, (float)(WINDOW_HEIGHT - 48.0f));
+        sprintf(command.data.text.content, "ENEMY     %u/%u [K/D]", context.game.enemy.kills, context.game.enemy.deaths);
+        renderer_frame_command_push(&context.renderer, command);
 
-        sprintf(stats, "PLAYER    %u/%u [K/D]", context.game.player.kills, context.game.player.deaths);
-        text_draw(&context.game.level.texts[0], stats, 16.0f, (float) (WINDOW_HEIGHT - 32.0f), 2.0f);
+        command.pos = vec2((float)WINDOW_WIDTH - 96.0f, (float)(WINDOW_HEIGHT - 16.0f));
+        sprintf(command.data.text.content, "FPS %0.f", context.ticker.framerate.value);
+        renderer_frame_command_push(&context.renderer, command);
 
-        sprintf(stats, "ENEMY     %u/%u [K/D]", context.game.enemy.kills, context.game.enemy.deaths);
-        text_draw(&context.game.level.texts[0], stats, 16.0f, (float) (WINDOW_HEIGHT - 48.0f), 2.0f);
-
-        sprintf(stats, "FPS %0.f", context.ticker.framerate.value);
-        text_draw(&context.game.level.texts[0], stats, (float) WINDOW_WIDTH - 96.0f, (float) (WINDOW_HEIGHT - 16.0f), 2.0f);
+        renderer_draw(&context.renderer);
+        renderer_frame_clear(&context.renderer);
 
         // OPENGL
         glfwSwapBuffers(context.platform.window);
