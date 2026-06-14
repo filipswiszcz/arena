@@ -1,9 +1,11 @@
-# output files
 *
 !/**/
 !*.*
 
-# build files xyari XYARI
+# bin files
+bin
+
+# build files
 build
 
 # xcode debug files

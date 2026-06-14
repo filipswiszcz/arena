@@ -166,9 +166,9 @@ static inline void ml_network_forward_move(ml_network_t *network, const mat_t *s
         if (probs->data[i] > maxv) maxv = probs->data[i];
     }
 
-    float expv = 0.0f;
+    float expv = 0.0f, temp = 2.0f;
     for (uint32_t i = 0; i < probs->cols; i++) {
-        probs->data[i] = expf(probs->data[i] - maxv);
+        probs->data[i] = expf((probs->data[i] - maxv) / temp);
         expv += probs->data[i];
     }
 
@@ -197,7 +197,6 @@ static inline void ml_network_episode_train(ml_network_t *network, float *data, 
     for (uint32_t i = 0; i < traj->steps; i++) rewards[i] = (rewards[i] - mean) / stddev;
 
     float *head = data;
-
     float *ghwdata = head; head += (network->hidd.weights.rows * network->hidd.weights.cols);
     float *ghbdata = head; head += (network->hidd.biases.rows * network->hidd.biases.cols);
     float *gowdata = head; head += (network->out.weights.rows * network->out.weights.cols);
