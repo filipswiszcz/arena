@@ -895,9 +895,9 @@ uint8_t GAME_MEMORY[GAME_MEMORY_CAPACITY];
 #define GAME_ACTOR_SPRITE_SCALE 2
 #define GAME_ACTOR_SHOOT_COOLDOWN 30
 
-#define GAME_ML_INPUTS 11
-#define GAME_ML_OUTPUTS 6
-#define GAME_ML_HIDDEN_NEURONS 64
+#define GAME_ML_INPUTS 15
+#define GAME_ML_OUTPUTS 8
+#define GAME_ML_HIDDEN_NEURONS 128
 
 typedef struct {
     vec2_t vel, force;
@@ -1037,9 +1037,10 @@ static struct {
         } animation;
 
         struct {
-            double value;
             double timer;
+            // double value;
             uint32_t counter;
+            uint32_t value;
         } framerate;
 
     } ticker;
@@ -1088,8 +1089,8 @@ void game_level_reset(void) {
     context.game.state = GAME_STATE_RESET;
 
     // move to spawn pos
-    game_actor_trans(&context.game.player, vec2(100.0f, 100.0f), vec2(0.0f, 0.0f));
-    game_actor_trans(&context.game.enemy, vec2((float) WINDOW_WIDTH - 100.0f - (GAME_ACTOR_SPRITE_SCALE * 16.0f), 100.0f), vec2(0.0f, 0.0f));
+    game_actor_trans(&context.game.player, vec2((50.0f + (ml_random() * 200.0f)), 100.0f), vec2(0.0f, 0.0f));
+    game_actor_trans(&context.game.enemy, vec2(((float) WINDOW_WIDTH - 50.0f - (GAME_ACTOR_SPRITE_SCALE * 16.0f) - (ml_random() * 200.0f)), 100.0f), vec2(0.0f, 0.0f));
 
     context.game.player.alive = 1;
     context.game.player.flip = 0;
@@ -1115,7 +1116,6 @@ void game_bullet_move(bullet_t *bullet) {
 }
 
 void game_bullet_actor_colls_handle(bullet_t *bullet, actor_t **actors) {
-
     vec2_t prevpos = bullet->pos;
 
     bullet->pos.x += bullet->rigb.vel.x * GAME_SIMULATION_FIXED_TIMESTEP;
@@ -1125,17 +1125,19 @@ void game_bullet_actor_colls_handle(bullet_t *bullet, actor_t **actors) {
 
     for (uint32_t i = 0; i < 2; i++) {
         if (game_collider_aabb_check(&bullet->coll, &actors[i]->coll)) {
-            if (bullet->shooter == actors[i]) continue;
-            if (!actors[i]->alive) continue;
+            if (!actors[i]->alive || bullet->shooter == actors[i]) continue;
 
-            actors[i]->coll.min = vec2(0.0f, 0.0f); // the other option is to teleport actor? but watch out for a constant falling as -y could overflow float (unlikely, but possible?)?
+            actors[i]->coll.min = vec2(0.0f, 0.0f);
             actors[i]->coll.max = vec2(0.0f, 0.0f);
             actors[i]->alive = 0;
+
+            if (bullet->shooter->traj.steps > 0) {
+                bullet->shooter->traj.rewards[bullet->shooter->traj.steps - 1] += 100.0f;
+            }
 
             bullet->used = 0;
         }
     }
-
 }
 
 void game_bullet_colls_handle(bullet_t *bullet, collider_t **colls) { // it has to rewritten (ray betwen pos and prev pos)
@@ -1167,9 +1169,6 @@ void game_actor_move(actor_t *actor, float xacc, uint8_t jump, uint8_t crouch) {
     } else {
         actor->crouched = 0;
     }
-
-    if (xacc < 0) actor->flip = 1;
-    else if (xacc > 0) actor->flip = 0;
 
     actor->rigb.force.x += (xacc * 2048.0f);
 
@@ -1244,7 +1243,7 @@ void game_actor_colls_handle(actor_t *actor, collider_t **colls) {
 
     actor->pos.x += actor->rigb.vel.x * GAME_SIMULATION_FIXED_TIMESTEP;
     actor->coll.min = actor->pos;
-    if (actor->crouched) actor->coll.max = vec2(actor->pos.x + actor->sprites[actor->action].size.x, actor->pos.y + (actor->sprites[actor->action].size.y / 2));
+    if (actor->crouched) actor->coll.max = vec2(actor->pos.x + actor->sprites[actor->action].size.x, actor->pos.y + (actor->sprites[actor->action].size.y / 2.0f));
     else actor->coll.max = vec2(actor->pos.x + actor->sprites[actor->action].size.x, actor->pos.y + actor->sprites[actor->action].size.y);
     actor->coll.mask = GAME_COLL_NONE;
     actor->grounded = 0;
@@ -1253,8 +1252,7 @@ void game_actor_colls_handle(actor_t *actor, collider_t **colls) {
     for (uint32_t i = 0; i < 2; i++) {
         if (game_collider_aabb_check(&actor->coll, colls[i])) {
             if (actor->rigb.vel.x > 0) {
-                // it glitches when trying to get on top of collider
-                actor->pos.x = colls[i]->min.x - (GAME_ACTOR_SPRITE_SCALE * 48.0f);
+                actor->pos.x = colls[i]->min.x - actor->sprites[actor->action].size.x;
                 actor->coll.mask |= GAME_COLL_RIGHT;
             } else if (actor->rigb.vel.x < 0) {
                 actor->pos.x = colls[i]->max.x;
@@ -1272,7 +1270,7 @@ void game_actor_colls_handle(actor_t *actor, collider_t **colls) {
     for (uint32_t i = 0; i < 2; i++) {
         if (game_collider_aabb_check(&actor->coll, colls[i])) {
             if (actor->rigb.vel.y > 0) {
-                actor->pos.y = colls[i]->min.y - (GAME_ACTOR_SPRITE_SCALE * 48.0f);
+                actor->pos.y = colls[i]->min.y - (actor->crouched ? (actor->sprites[actor->action].size.y / 2.0f) : actor->sprites[actor->action].size.y);
                 actor->coll.mask |= GAME_COLL_TOP;
             } else if (actor->rigb.vel.y < 0) {
                 actor->pos.y = colls[i]->max.y;
@@ -1310,8 +1308,8 @@ void game_ml_init(void) {
 
 void game_ml_step(actor_t *actor, actor_t *enemy, ml_trajectory_t *traj, int8_t quadrant) {
 
-    float bdx = 10.0f, bdy = 10.0f;
-    float mdist = 9999999.0f;
+    float bdx = 0.0f, bdy = 0.0f;
+    float mdist = 9999999.0f, threat = 0.0f;
 
     for (uint32_t i = 0; i < GAME_LEVEL_BULLET_ARRAY_SIZE; i++) { // bullet awareness
         if (context.game.level.bullets[i].used && context.game.level.bullets[i].shooter != actor) {
@@ -1324,6 +1322,9 @@ void game_ml_step(actor_t *actor, actor_t *enemy, ml_trajectory_t *traj, int8_t 
                 bdx = (dx * quadrant) / (float) WINDOW_WIDTH;
                 bdy = dy / (float) WINDOW_HEIGHT;
                 mdist = dist;
+
+                if ((dx > 0 && context.game.level.bullets[i].rigb.vel.x < 0) || (dx < 0 && context.game.level.bullets[i].rigb.vel.x > 0)) threat = 1.0f; 
+                else threat = 0.0f;
             }
         }
     }
@@ -1339,7 +1340,11 @@ void game_ml_step(actor_t *actor, actor_t *enemy, ml_trajectory_t *traj, int8_t 
         bdy,
         (actor->rigb.vel.x * quadrant) / 1000.0f,
         actor->rigb.vel.y / 1000.0f,
-        (float) actor->grounded
+        (float) actor->grounded,
+        ((!actor->flip && enemy->pos.x > actor->pos.x) || (actor->flip && enemy->pos.x < actor->pos.x)),
+        ((quadrant == 1.0f) ? actor->pos.x : ((float) WINDOW_WIDTH - actor->pos.x)) / (float) WINDOW_WIDTH,
+        enemy->cooldowns[ACTOR_COOLDOWN_SHOOT] > 0 ? 1.0f : 0.0f,
+        threat
     };
     mat_t state = mat(inputs, 1, GAME_ML_INPUTS);
 
@@ -1351,42 +1356,82 @@ void game_ml_step(actor_t *actor, actor_t *enemy, ml_trajectory_t *traj, int8_t 
     float xacc = 0.0f;
     uint8_t jump = 0, crouch = 0, shoot = 0;
 
-    int32_t action = ml_sample_action(&prob);
-    if (action == 1) xacc =  1.0f * quadrant;
-    if (action == 2) xacc = -1.0f * quadrant;
-    if (action == 3) jump = 1;
-    if (action == 4) crouch = 1;
-    if (action == 5) shoot = 1;
+    int32_t actions[2] = {4, 7};
+
+    float sample = ml_random(), accum = 0.0f;
+    for (uint32_t i = 0; i < 5; i++) {
+        accum += prob.data[i];
+        if (sample <= accum) {
+            actions[0] = i; break;
+        }
+    }
+
+    sample = ml_random(), accum = 0.0f;
+    for (uint32_t i = 5; i < 8; i++) {
+        accum += prob.data[i];
+        if (sample <= accum) {
+            actions[1] = i; break;
+        }
+    }
+
+    if (actions[0] == 1) xacc = 1.0f * quadrant;
+    if (actions[0] == 2) xacc = -1.0f * quadrant;
+    if (actions[0] == 3) jump = 1;
+    if (actions[0] == 4) crouch = 1;
+    if (actions[1] == 5) actor->flip = (quadrant == 1.0f) ? 1 : 0;
+    if (actions[1] == 6) actor->flip = (quadrant == 1.0f) ? 0 : 1;
+    if (actions[1] == 7) {actor->flip = (quadrant == 1.0f) ? 0 : 1; shoot = 1;}
 
     game_actor_move(actor, xacc, jump, crouch);
 
-    if (quadrant == 1.0f && actor->pos.x > (WINDOW_WIDTH / 2.0f) - actor->sprites[0].size.x) {
-        actor->pos.x = (WINDOW_WIDTH / 2.0f) - 48.0f;
+    if (quadrant == 1.0f && actor->pos.x > (WINDOW_WIDTH * 0.5f) - 60.0f) {
+        actor->pos.x = (WINDOW_WIDTH * 0.5f) - 60.0f;
         actor->rigb.vel.x = 0;
     }
-    if (quadrant == -1.0f && actor->pos.x < (WINDOW_WIDTH / 2.0f)) {
-        actor->pos.x = (WINDOW_WIDTH / 2.0f);
+    if (quadrant == -1.0f && actor->pos.x < (WINDOW_WIDTH * 0.5f) + 60.0f) {
+        actor->pos.x = (WINDOW_WIDTH * 0.5f) + 60.0f;
         actor->rigb.vel.x = 0;
     }
 
-    float reward = -0.01f, erx = (enemy->pos.x - actor->pos.x) * quadrant;
+    collider_t *colls[] = {&context.game.level.ground.coll, &enemy->coll};
+    game_actor_colls_handle(actor, colls);
 
-    if (erx > 0 && action == 1) reward += 0.05f;
-    if (erx > 0 && action == 2) reward -= 0.05f;
+    float reward = -0.02f;
+
+    float enemydist = fabsf(enemy->pos.x - actor->pos.x);
+    if (enemydist > 150.0f && enemydist < 450.0f) reward += 0.1f;
+    else if (enemydist > 450.0f) reward -= 0.2f;
+    else reward -= 0.1f;
+
+    float middist = fabsf(actor->pos.x - (WINDOW_WIDTH * 0.5f));
+    if (middist > 300.0f) reward -= 0.5f;
+
+    uint8_t lowdist = (mdist < 15000.0f);
+    if (lowdist && actions[0] == 3) reward += 0.2f;
+    if (!lowdist && actions[0] == 3) reward -= 0.1f;
+    if (!lowdist && actions[0] == 4) reward -= 0.1f;
+
+    uint8_t facing = ((!actor->flip && enemy->pos.x > actor->pos.x) || (actor->flip && enemy->pos.x < actor->pos.x));
+    if (!facing) reward -= 0.05f;
 
     if (shoot) {
-        game_actor_shoot(actor);
-        // reward += 0.5f;
+        uint8_t valid = (actor->alive && actor->cooldowns[ACTOR_COOLDOWN_SHOOT] == 0);
 
-        uint8_t facing = 0;
-        if ((quadrant == 1.0f || quadrant == -1.0f) && ((!actor->flip && enemy->pos.x > actor->pos.x) || (actor->flip && enemy->pos.x < actor->pos.x))) facing = 1;
-        
-        // if (facing) reward -= 0.05f; // ammo penalty
-        if (facing) reward += 0.5f;
-        else reward -= 1.0f;
+        game_actor_shoot(actor);
+
+        if (valid) {
+            if (facing) {
+                if (fabsf(enemy->pos.y - actor->pos.y) < 60.0f) reward += 0.3f;
+                reward += 0.2f;
+            } else {
+                reward -= 1.0f;
+            }
+        } else {
+            reward -= 0.01f;
+        }
     }
 
-    ml_trajectory_step_add(traj, &state, action, reward);
+    ml_trajectory_step_add(traj, &state, actions, reward);
 
 }
 
@@ -1464,15 +1509,28 @@ void _game_keyboard_handle(void) { // it has to rewritten as well (try to handle
         xacc += 1.0f;
     }
 
-    // it has to change mode from playing to simulating (because game_actor_move fires two times for player (only))
-
-    // KEY F
-    if (context.platform.keys[GLFW_KEY_F]) {
-        game_actor_shoot(&context.game.player);
+    // KEY LEFT
+    if (context.platform.keys[GLFW_KEY_LEFT]) {
+        context.game.player.flip = 1;
     }
+
+    // KEY RIGHT
+    if (context.platform.keys[GLFW_KEY_RIGHT]) {
+        context.game.player.flip = 0;
+    }
+
+    // it has to change mode from playing to simulating (because game_actor_move fires two times for player (only))
 
     if (context.game.player.alive) {
         game_actor_move(&context.game.player, xacc, jump, crouch);
+
+        collider_t *colls[] = {&context.game.level.ground.coll, &context.game.enemy.coll};
+        game_actor_colls_handle(&context.game.player, colls);
+
+        // KEY F
+        if (context.platform.keys[GLFW_KEY_F]) {
+            game_actor_shoot(&context.game.player);
+        }
     }
 }
 
@@ -1650,7 +1708,7 @@ void game_update(void) {
         // context.ticker.framerate.counter++;
 
         if (context.ticker.framerate.timer >= 1.0f) {
-            context.ticker.framerate.value = (double) context.ticker.framerate.counter / context.ticker.framerate.timer;
+            context.ticker.framerate.value = (uint32_t) context.ticker.framerate.counter / context.ticker.framerate.timer;
             context.ticker.framerate.timer -= 1.0f;
             context.ticker.framerate.counter = 0;
         }
@@ -1678,11 +1736,11 @@ void game_update(void) {
                 game_ml_step(&context.game.enemy, &context.game.player, &context.game.enemy.traj, -1.0f);
 
                 // physics
-                collider_t *colls[] = {&context.game.level.ground.coll, &context.game.enemy.coll};
-                game_actor_colls_handle(&context.game.player, colls);
+                // collider_t *colls[] = {&context.game.level.ground.coll, &context.game.enemy.coll};
+                // game_actor_colls_handle(&context.game.player, colls);
 
-                colls[1] = &context.game.player.coll;
-                game_actor_colls_handle(&context.game.enemy, colls);
+                // colls[1] = &context.game.player.coll;
+                // game_actor_colls_handle(&context.game.enemy, colls);
 
                 actor_t *actors[] = {&context.game.player, &context.game.enemy};
                 for (uint32_t i = 0; i < GAME_LEVEL_BULLET_ARRAY_SIZE; i++) {
@@ -1698,7 +1756,7 @@ void game_update(void) {
 
                 // ml
                 uint8_t timeout = 0;
-                if (context.game.player.traj.steps >= 1200) {
+                if (context.game.player.traj.steps >= 600) {
                     context.game.player.alive = 0;
                     context.game.enemy.alive = 0;
                     timeout = 1;
@@ -1707,12 +1765,12 @@ void game_update(void) {
                 if (!context.game.player.alive || !context.game.enemy.alive || timeout) {
 
                     if (context.game.player.traj.steps > 0) {
-                        float term = timeout ? -100.0f : (context.game.player.alive ? 100.0f : -100.0f);
+                        float term = timeout ? -10.0f : (context.game.player.alive ? 150.0f : -50.0f);
                         context.game.player.traj.rewards[context.game.player.traj.steps - 1] += term;
                         ml_network_episode_train(&context.ml.network, context.ml.region, &context.game.player.traj);
                     }
                     if (context.game.enemy.traj.steps > 0) {
-                        float term = timeout ? -100.0f : (context.game.enemy.alive ? 100.0f : -100.0f);
+                        float term = timeout ? -10.0f : (context.game.enemy.alive ? 150.0f : -50.0f);
                         context.game.enemy.traj.rewards[context.game.enemy.traj.steps - 1] += term;
                         ml_network_episode_train(&context.ml.network, context.ml.region, &context.game.enemy.traj);
                     }
@@ -1918,7 +1976,7 @@ void game_update(void) {
             else if (context.ticker.framerate.value < 100) offset = (6.0f * FONT_WIDTH * 2.0f) + 16.0f;
 
             command.pos = vec2((float) WINDOW_WIDTH - offset, (float) (WINDOW_HEIGHT - 16.0f));
-            sprintf(command.data.text.content, "FPS %0.f", context.ticker.framerate.value);
+            sprintf(command.data.text.content, "FPS %u", context.ticker.framerate.value);
             renderer_frame_command_push(&context.renderer, command);
 
             renderer_draw(&context.renderer);
