@@ -93,25 +93,25 @@ typedef struct {
     uint32_t steps;
 } ml_trajectory_t;
 
-static inline void ml_trajectory_init(ml_trajectory_t *traj, float *data, uint32_t size) {
+static inline void ml_trajectory_init(ml_trajectory_t *traject, float *data, uint32_t size) {
     for (uint32_t i = 0; i < ML_EPISODE_STEPS; i++) {
         float *datapart = &data[i * size];
-        traj->states[i] = mat(datapart, 1, size);
+        traject->states[i] = mat(datapart, 1, size);
     }
-    traj->steps = 0;
+    traject->steps = 0;
 }
 
-static inline void ml_trajectory_step_add(ml_trajectory_t *traj, mat_t *state, int32_t *actions, float reward) {
-    if (traj->steps >= ML_EPISODE_STEPS) return;
+static inline void ml_trajectory_step_add(ml_trajectory_t *traject, mat_t *state, int32_t *actions, float reward) {
+    if (traject->steps >= ML_EPISODE_STEPS) return;
 
     for (uint32_t i = 0; i < (state->rows * state->cols); i++) {
-        traj->states[traj->steps].data[i] = state->data[i];
+        traject->states[traject->steps].data[i] = state->data[i];
     }
 
-    traj->actions[0][traj->steps] = actions[0];
-    traj->actions[1][traj->steps] = actions[1];
-    traj->rewards[traj->steps] = reward;
-    traj->steps++;
+    traject->actions[0][traject->steps] = actions[0];
+    traject->actions[1][traject->steps] = actions[1];
+    traject->rewards[traject->steps] = reward;
+    traject->steps++;
 }
 
 typedef struct {
@@ -151,7 +151,6 @@ static inline void ml_network_init(ml_network_t *network, float **data, uint32_t
 }
 
 static inline void ml_network_forward_move(ml_network_t *network, const mat_t *state, mat_t *probs) {
-
     ml_mat_dot(&network->hidd.outs, (mat_t *) state, &network->hidd.weights);
     ml_mat_add(&network->hidd.outs, &network->hidd.outs, &network->hidd.biases);
 
@@ -183,26 +182,25 @@ static inline void ml_network_forward_move(ml_network_t *network, const mat_t *s
     }
 
     for (uint32_t i = 5; i < 8; i++) probs->data[i] /= expvs[1];
-
 }
 
-static inline void ml_network_episode_train(ml_network_t *network, float *data, ml_trajectory_t *traj) {
-    if (traj->steps == 0) return;
+static inline void ml_network_episode_train(ml_network_t *network, float *data, ml_trajectory_t *traject) {
+    if (traject->steps == 0) return;
 
     float rewards[ML_EPISODE_STEPS];
     float gamma = 0.99f, runner = 0.0f;
 
-    for (int32_t i = traj->steps - 1; i >= 0; i--) {
-        runner = runner * gamma + traj->rewards[i]; 
+    for (int32_t i = traject->steps - 1; i >= 0; i--) {
+        runner = runner * gamma + traject->rewards[i]; 
         rewards[i] = runner;
     }
 
     float mean = 0.0f, stddev = 0.0f;
-    for (uint32_t i = 0; i < traj->steps; i++) mean += rewards[i];
-    mean /= (float) traj->steps;
-    for (uint32_t i = 0; i < traj->steps; i++) stddev += powf(rewards[i] - mean, 2.0f);
-    stddev = sqrtf(stddev / (float) traj->steps) + 1e-8f;
-    for (uint32_t i = 0; i < traj->steps; i++) rewards[i] = (rewards[i] - mean) / stddev;
+    for (uint32_t i = 0; i < traject->steps; i++) mean += rewards[i];
+    mean /= (float) traject->steps;
+    for (uint32_t i = 0; i < traject->steps; i++) stddev += powf(rewards[i] - mean, 2.0f);
+    stddev = sqrtf(stddev / (float) traject->steps) + 1e-8f;
+    for (uint32_t i = 0; i < traject->steps; i++) rewards[i] = (rewards[i] - mean) / stddev;
 
     float *head = data;
     float *ghwdata = head; head += (network->hidd.weights.rows * network->hidd.weights.cols);
@@ -234,20 +232,20 @@ static inline void ml_network_episode_train(ml_network_t *network, float *data, 
     mat_t dtg = mat(dtgdata, 1, network->hidd.outs.cols);
     float *reldata = head; head += network->hidd.outs.cols;
     mat_t reld = mat(reldata, 1, network->hidd.outs.cols);
-    float *sttdata = head; head += traj->states[0].cols;
-    mat_t stt = mat(sttdata, traj->states[0].cols, 1);
+    float *sttdata = head; head += traject->states[0].cols;
+    mat_t stt = mat(sttdata, traject->states[0].cols, 1);
     float *sggdata = head; head += (gradhw.rows * gradhw.cols);
     mat_t sgg = mat(sggdata, gradhw.rows, gradhw.cols);
 
-    for (uint32_t i = 0; i < traj->steps; i++) {
-        ml_network_forward_move(network, &traj->states[i], &probs);
+    for (uint32_t i = 0; i < traject->steps; i++) {
+        ml_network_forward_move(network, &traject->states[i], &probs);
 
         for (uint32_t j = 0; j < 5; j++) {
-            socd.data[j] = (probs.data[j] - (j == (uint32_t) traj->actions[0][i] ? 1.0f : 0.0f)) * rewards[i];
+            socd.data[j] = (probs.data[j] - (j == (uint32_t) traject->actions[0][i] ? 1.0f : 0.0f)) * rewards[i];
         }
         
         for (uint32_t j = 5; j < 8; j++) {
-            socd.data[j] = (probs.data[j] - (j == (uint32_t) traj->actions[1][i] ? 1.0f : 0.0f)) * rewards[i];
+            socd.data[j] = (probs.data[j] - (j == (uint32_t) traject->actions[1][i] ? 1.0f : 0.0f)) * rewards[i];
         }
 
         ml_mat_transp(&hidt, &network->hidd.outs);
@@ -263,7 +261,7 @@ static inline void ml_network_episode_train(ml_network_t *network, float *data, 
             reld.data[j] = (network->hidd.outs.data[j] > 0.0f) ? dtg.data[j] : 0.0f;
         }
 
-        ml_mat_transp(&stt, &traj->states[i]);
+        ml_mat_transp(&stt, &traject->states[i]);
         ml_mat_dot(&sgg, &stt, &reld);
 
         ml_mat_add(&gradhw, &gradhw, &sgg);
