@@ -899,6 +899,18 @@ uint8_t GAME_MEMORY[GAME_MEMORY_CAPACITY];
 #define GAME_ML_OUTPUTS 8
 #define GAME_ML_HIDDEN_NEURONS 128
 
+typedef enum {
+    GAME_STATE_LOAD = 0,
+    GAME_STATE_PAUSE = 1,
+    GAME_STATE_PLAY = 2,
+    GAME_STATE_RESET = 3
+} game_state_t;
+
+typedef enum {
+    GAME_CONTROLLER_MANUAL = 0,
+    GAME_CONTROLLER_AUTO = 1
+} game_controller_t;
+
 typedef struct {
     vec2_t vel, force;
     float mass, grav;
@@ -1010,54 +1022,38 @@ typedef struct {
     uint8_t flip;
 } bullet_t;
 
-typedef enum {
-    GAME_STATE_LOAD = 0,
-    GAME_STATE_PAUSE = 1,
-    GAME_STATE_PLAY = 2,
-    GAME_STATE_RESET = 3
-} game_state_t;
-
-typedef enum {
-    GAME_CONTROLLER_MANUAL = 0,
-    GAME_CONTROLLER_AUTO = 1
-} game_controller_t;
-
 static struct {
 
     struct {
         GLFWwindow *window;
         int32_t keys[512];
-    } platform;
+    } sys;
 
     struct {
-        double time_of_last_frame;
-        double time_between_frames;
+        double lft, dt; // last frame time, delta time
 
         struct {
-            double accumulator; // accum?
+            double accum; // accum?
         } physics;
 
         struct {
-            double accumulator;
+            double accum;
         } animation;
 
         struct {
             double timer;
-            // double value;
             uint32_t counter;
-            uint32_t value; // can it be uint?
+            uint32_t value;
         } framerate;
 
-    } ticker;
-
-    // struct {} metrics;
+    } clock;
 
     mem_arena_t arena;
 
     struct {
         shader_t *shaders;
         texture_t *textures;
-    } resources;
+    } res;
 
     renderer_t renderer;
 
@@ -1069,8 +1065,7 @@ static struct {
             sprite_t *sprites;
 
             bullet_t *bullets;
-
-            rect_t ground;
+            rect_t ground; // arr?
             
             uint16_t turn;
         } level;
@@ -1081,7 +1076,8 @@ static struct {
 
     struct {
         ml_network_t network;
-        float *region; // make built-in arena in libml
+        float *region; // make builft-in arena in libml
+        uint8_t capped;
     } ml;
 
 } context;
@@ -1319,6 +1315,7 @@ void game_ml_init(void) {
     );
 
     context.ml.region = mem_arena_alloc(&context.arena, ((size.x + size.y + size.z + size.w) + (GAME_ML_OUTPUTS * 2) + (GAME_ML_HIDDEN_NEURONS * 3) + (size.z * 2) + GAME_ML_INPUTS + (GAME_ML_INPUTS * GAME_ML_HIDDEN_NEURONS)) * sizeof(float));
+    context.ml.capped = 0;
 
 }
 
@@ -1458,15 +1455,15 @@ void _game_win32_icon_init(void) {
     ASSERT(pixels, "ICON_READ_ERROR: %s", path);
 
     GLFWimage images[1] = {(GLFWimage) {.width = width, .height = height, .pixels = pixels}};
-    glfwSetWindowIcon(context.platform.window, 1, images);
+    glfwSetWindowIcon(context.sys.window, 1, images);
 
     stbi_image_free(pixels);
 }
 
 void _game_keyboard_callback(GLFWwindow *window, int32_t key, int32_t scan, int32_t action, int32_t mode) {
     if (key > -1 && key < 512) {
-        if (action == GLFW_PRESS) context.platform.keys[key] = 1;
-        else if (action == GLFW_RELEASE) context.platform.keys[key] = 0;
+        if (action == GLFW_PRESS) context.sys.keys[key] = 1;
+        else if (action == GLFW_RELEASE) context.sys.keys[key] = 0;
     }
 }
 
@@ -1474,28 +1471,28 @@ void _game_keyboard_handle(void) { // it has to rewritten as well (try to handle
     if (context.game.state == GAME_STATE_LOAD) return;
 
     // KEY Q (quit)
-    if (context.platform.keys[GLFW_KEY_LEFT_CONTROL] && context.platform.keys[GLFW_KEY_Q]) {
-        glfwSetWindowShouldClose(context.platform.window, 1);
+    if (context.sys.keys[GLFW_KEY_LEFT_CONTROL] && context.sys.keys[GLFW_KEY_Q]) {
+        glfwSetWindowShouldClose(context.sys.window, 1);
     }
 
     // KEY P (pause)
-    if (context.platform.keys[GLFW_KEY_P]) {
+    if (context.sys.keys[GLFW_KEY_P]) {
         if (context.game.state != GAME_STATE_PAUSE) context.game.state = GAME_STATE_PAUSE;
     }
 
     // KEY R (resume)
-    if (context.platform.keys[GLFW_KEY_R]) {
+    if (context.sys.keys[GLFW_KEY_R]) {
         if (context.game.state != GAME_STATE_PLAY) context.game.state = GAME_STATE_PLAY;
     }
 
     // KEY ESC (reset)
-    if (context.platform.keys[GLFW_KEY_ESCAPE]) {
+    if (context.sys.keys[GLFW_KEY_ESCAPE]) {
         if (context.game.state != GAME_STATE_RESET) {
             // context.game.state = GAME_STATE_RESET;
             game_level_reset();
         }
     }
-    if (!context.platform.keys[GLFW_KEY_ESCAPE]) { // quick workaround
+    if (!context.sys.keys[GLFW_KEY_ESCAPE]) { // quick workaround
         if (context.game.state == GAME_STATE_RESET) context.game.state = GAME_STATE_PLAY;
     }
 
@@ -1506,32 +1503,32 @@ void _game_keyboard_handle(void) { // it has to rewritten as well (try to handle
     uint8_t jump = 0, crouch = 0;
 
     // KEY W
-    if (context.platform.keys[GLFW_KEY_W] == 1) {
-        context.platform.keys[GLFW_KEY_W] = 2; jump = 1;
+    if (context.sys.keys[GLFW_KEY_W] == 1) {
+        context.sys.keys[GLFW_KEY_W] = 2; jump = 1;
     }
 
     // KEY A
-    if (context.platform.keys[GLFW_KEY_A]) {
+    if (context.sys.keys[GLFW_KEY_A]) {
         xacc -= 1.0f;
     }
 
     // KEY S
-    if (context.platform.keys[GLFW_KEY_S]) {
+    if (context.sys.keys[GLFW_KEY_S]) {
         crouch = 1;
     }
 
     // KEY D
-    if (context.platform.keys[GLFW_KEY_D]) {
+    if (context.sys.keys[GLFW_KEY_D]) {
         xacc += 1.0f;
     }
 
     // KEY LEFT
-    if (context.platform.keys[GLFW_KEY_LEFT]) {
+    if (context.sys.keys[GLFW_KEY_LEFT]) {
         context.game.player.flip = 1;
     }
 
     // KEY RIGHT
-    if (context.platform.keys[GLFW_KEY_RIGHT]) {
+    if (context.sys.keys[GLFW_KEY_RIGHT]) {
         context.game.player.flip = 0;
     }
 
@@ -1544,7 +1541,7 @@ void _game_keyboard_handle(void) { // it has to rewritten as well (try to handle
         game_actor_colls_handle(&context.game.player, colls);
 
         // KEY F
-        if (context.platform.keys[GLFW_KEY_F]) {
+        if (context.sys.keys[GLFW_KEY_F]) {
             game_actor_shoot(&context.game.player);
         }
     }
@@ -1564,12 +1561,12 @@ void game_init(void) {
 #endif
     glfwWindowHint(GLFW_RESIZABLE, GL_FALSE);
 
-    context.platform.window = glfwCreateWindow(WINDOW_WIDTH, WINDOW_HEIGHT, WINDOW_NAME, NULL, NULL);
-    ASSERT(context.platform.window, "GLFW_WINDOW_CREATE_ERROR\n");
+    context.sys.window = glfwCreateWindow(WINDOW_WIDTH, WINDOW_HEIGHT, WINDOW_NAME, NULL, NULL);
+    ASSERT(context.sys.window, "GLFW_WINDOW_CREATE_ERROR\n");
 
-    glfwMakeContextCurrent(context.platform.window);
-    glfwSetKeyCallback(context.platform.window, _game_keyboard_callback);
-    // glfwSetInputMode(context.platform.window, GLFW_CURSOR, GLFW_CURSOR_DISABLED);
+    glfwMakeContextCurrent(context.sys.window);
+    glfwSetKeyCallback(context.sys.window, _game_keyboard_callback);
+    // glfwSetInputMode(context.sys.window, GLFW_CURSOR, GLFW_CURSOR_DISABLED);
     // glfwSwapInterval(1);
     glfwSwapInterval(0);
 
@@ -1598,38 +1595,38 @@ void game_init(void) {
     mem_arena_init(&context.arena, &GAME_MEMORY, GAME_MEMORY_CAPACITY);
 
     // RESOURCES
-    context.resources.shaders = mem_arena_alloc(&context.arena, GAME_RESOURCES_SHADER_ARRAY_SIZE * sizeof(shader_t));
-    shader_init(&context.resources.shaders[0], "res/shader/sprite.vs", "res/shader/sprite.fs");
-    shader_init(&context.resources.shaders[1], "res/shader/text.vs", "res/shader/text.fs");
-    shader_init(&context.resources.shaders[2], "res/shader/crt.vs", "res/shader/crt.fs");
-    // shader_init(&context.resources.shaders[3], "res/shader/glitch.vs", "res/shader/glitch.fs");
+    context.res.shaders = mem_arena_alloc(&context.arena, GAME_RESOURCES_SHADER_ARRAY_SIZE * sizeof(shader_t));
+    shader_init(&context.res.shaders[0], "res/shader/sprite.vs", "res/shader/sprite.fs");
+    shader_init(&context.res.shaders[1], "res/shader/text.vs", "res/shader/text.fs");
+    shader_init(&context.res.shaders[2], "res/shader/crt.vs", "res/shader/crt.fs");
+    // shader_init(&context.res.shaders[3], "res/shader/glitch.vs", "res/shader/glitch.fs");
 
     // TODO read it auto, and search it by name (only in init)
-    context.resources.textures = mem_arena_alloc(&context.arena, GAME_RESOURCES_TEXTURE_ARRAY_SIZE * sizeof(texture_t));
-    texture_init(&context.resources.textures[0], "res/texture/bullet.png");
-    texture_init(&context.resources.textures[1], "res/texture/gun.png");
+    context.res.textures = mem_arena_alloc(&context.arena, GAME_RESOURCES_TEXTURE_ARRAY_SIZE * sizeof(texture_t));
+    texture_init(&context.res.textures[0], "res/texture/bullet.png");
+    texture_init(&context.res.textures[1], "res/texture/gun.png");
 
-    texture_init(&context.resources.textures[2], "res/texture/level/tile.png");
+    texture_init(&context.res.textures[2], "res/texture/level/tile.png");
 
-    texture_init(&context.resources.textures[3], "res/texture/player/punk_idle-comp.png");
-    texture_init(&context.resources.textures[4], "res/texture/player/punk_jump.png");
-    texture_init(&context.resources.textures[5], "res/texture/player/punk_double_jump.png");
-    texture_init(&context.resources.textures[6], "res/texture/player/punk_run-compact.png");
-    texture_init(&context.resources.textures[7], "res/texture/player/punk_crouch-2.png");
-    texture_init(&context.resources.textures[8], "res/texture/player/punk_attack.png");
-    texture_init(&context.resources.textures[9], "res/texture/player/punk_death.png");
+    texture_init(&context.res.textures[3], "res/texture/player/punk_idle-comp.png");
+    texture_init(&context.res.textures[4], "res/texture/player/punk_jump.png");
+    texture_init(&context.res.textures[5], "res/texture/player/punk_double_jump.png");
+    texture_init(&context.res.textures[6], "res/texture/player/punk_run-compact.png");
+    texture_init(&context.res.textures[7], "res/texture/player/punk_crouch-2.png");
+    texture_init(&context.res.textures[8], "res/texture/player/punk_attack.png");
+    texture_init(&context.res.textures[9], "res/texture/player/punk_death.png");
 
-    texture_init(&context.resources.textures[10], "res/texture/enemy/cyborg_idle-3.png"); 
-    texture_init(&context.resources.textures[11], "res/texture/enemy/cyborg_jump.png");
-    texture_init(&context.resources.textures[12], "res/texture/enemy/cyborg_double_jump.png");
-    texture_init(&context.resources.textures[13], "res/texture/enemy/cyborg_run-compact.png");
-    texture_init(&context.resources.textures[14], "res/texture/enemy/cyborg_crouch-2.png");
-    texture_init(&context.resources.textures[15], "res/texture/enemy/cyborg_attack.png");
-    texture_init(&context.resources.textures[16], "res/texture/enemy/cyborg_death.png");
+    texture_init(&context.res.textures[10], "res/texture/enemy/cyborg_idle-3.png"); 
+    texture_init(&context.res.textures[11], "res/texture/enemy/cyborg_jump.png");
+    texture_init(&context.res.textures[12], "res/texture/enemy/cyborg_double_jump.png");
+    texture_init(&context.res.textures[13], "res/texture/enemy/cyborg_run-compact.png");
+    texture_init(&context.res.textures[14], "res/texture/enemy/cyborg_crouch-2.png");
+    texture_init(&context.res.textures[15], "res/texture/enemy/cyborg_attack.png");
+    texture_init(&context.res.textures[16], "res/texture/enemy/cyborg_death.png");
 
     // RENDERER
     context.renderer.frame.commands = mem_arena_alloc(&context.arena, RENDERER_COMMAND_ARRAY_SIZE * sizeof(command_t));
-    renderer_init(&context.renderer, context.resources.shaders);
+    renderer_init(&context.renderer, context.res.shaders);
 
     // GAME
     context.game.state = GAME_STATE_LOAD;
@@ -1640,13 +1637,12 @@ void game_init(void) {
     for (uint32_t i = 0; i < GAME_LEVEL_BULLET_ARRAY_SIZE; i++) context.game.level.bullets[i] = (bullet_t) {0}; // is there a cooler way to init this?
     context.game.level.turn = 0;
 
-    sprite_init(&context.game.level.sprites[0], &context.resources.textures[0], vec2(1.0f, 1.0f), vec2(0.0f, 0.0f), vec2(0.0f, 0.0f), vec2(GAME_ACTOR_SPRITE_SCALE * 6.0f, GAME_ACTOR_SPRITE_SCALE * 6.0f), 0.0f, vec3(1.0f, 1.0f, 1.0f), 0, 0); // bullet
-    sprite_init(&context.game.level.sprites[1], &context.resources.textures[1], vec2(1.0f, 1.0f), vec2(0.0f, 0.0f), vec2(0.0f, 0.0f), vec2(GAME_ACTOR_SPRITE_SCALE * 18.0f, GAME_ACTOR_SPRITE_SCALE * 8.0f), 0.0f, vec3(1.0f, 1.0f, 1.0f), 0, 0); // gun
-    sprite_init(&context.game.level.sprites[2], &context.resources.textures[2], vec2(1.0f, 1.0f), vec2(0.0f, 0.0f), vec2(0.0f, 0.0f), vec2((float) WINDOW_WIDTH, 50.0f), 0.0f, vec3(1.0f, 1.0f, 1.0f), 0, 0); // rect
+    sprite_init(&context.game.level.sprites[0], &context.res.textures[0], vec2(1.0f, 1.0f), vec2(0.0f, 0.0f), vec2(0.0f, 0.0f), vec2(GAME_ACTOR_SPRITE_SCALE * 6.0f, GAME_ACTOR_SPRITE_SCALE * 6.0f), 0.0f, vec3(1.0f, 1.0f, 1.0f), 0, 0); // bullet
+    sprite_init(&context.game.level.sprites[1], &context.res.textures[1], vec2(1.0f, 1.0f), vec2(0.0f, 0.0f), vec2(0.0f, 0.0f), vec2(GAME_ACTOR_SPRITE_SCALE * 18.0f, GAME_ACTOR_SPRITE_SCALE * 8.0f), 0.0f, vec3(1.0f, 1.0f, 1.0f), 0, 0); // gun
+    sprite_init(&context.game.level.sprites[2], &context.res.textures[2], vec2(1.0f, 1.0f), vec2(0.0f, 0.0f), vec2(0.0f, 0.0f), vec2((float) WINDOW_WIDTH, 50.0f), 0.0f, vec3(1.0f, 1.0f, 1.0f), 0, 0); // rect
 
     // level
     game_rect_init(&context.game.level.ground, &context.game.level.sprites[2], vec2(0.0f, 0.0f), vec2((float) WINDOW_WIDTH, ((float) WINDOW_HEIGHT / 12.0f)));
-
 
     // actor
     context.game.player.pos = vec2(100.0f, 100.0f);
@@ -1664,13 +1660,13 @@ void game_init(void) {
     context.game.player.deaths = 0;
 
     // sprite_init(&sprite, "punk_run", ..);
-    sprite_init(&context.game.player.sprites[0], &context.resources.textures[3], vec2(0.25f, 1.0f), vec2(0.0f, 0.0f), vec2(0.0f, 0.0f), vec2(GAME_ACTOR_SPRITE_SCALE * 17.0f, GAME_ACTOR_SPRITE_SCALE * 34.0f), 0.0f, vec3(1.0f, 1.0f, 1.0f), 0, 0); // idle
-    // sprite_init(&context.game.player.sprites[1], &context.resources.textures[4], vec2(0.0f, 0.0f), vec2(48.0f * GAME_ACTOR_SPRITE_SCALE, 48.0f * GAME_ACTOR_SPRITE_SCALE), 0.0f, vec2(0.25f, 1.0f), vec2(0.25f, 0.0f), vec3(1.0f, 1.0f, 1.0f), 0); // jump
-    // sprite_init(&context.game.player.sprites[2], &context.resources.textures[5], vec2(0.0f, 0.0f), vec2(48.0f * GAME_ACTOR_SPRITE_SCALE, 48.0f * GAME_ACTOR_SPRITE_SCALE), 0.0f, vec2(0.167f, 1.0f), vec2(0.167f, 0.0f), vec3(1.0f, 1.0f, 1.0f), 0); // double jump
-    sprite_init(&context.game.player.sprites[3], &context.resources.textures[6],vec2(0.167f, 1.0f), vec2(0.0f, 0.0f), vec2(0.0f, 0.0f), vec2(GAME_ACTOR_SPRITE_SCALE * 17.0f, GAME_ACTOR_SPRITE_SCALE * 33.0f), 0.0f, vec3(1.0f, 1.0f, 1.0f), 0, 0); // run
-    sprite_init(&context.game.player.sprites[4], &context.resources.textures[7], vec2(1.0f, 1.0f), vec2(0.0f, 0.0f), vec2(0.0f, 0.0f), vec2(GAME_ACTOR_SPRITE_SCALE * 16.0f, GAME_ACTOR_SPRITE_SCALE * 27.0f), 0.0f, vec3(1.0f, 1.0f, 1.0f), 0, 0); // crouch
-    // sprite_init(&context.game.player.sprites[5], &context.resources.textures[8], vec2(0.0f, 0.0f), vec2(48.0f * GAME_ACTOR_SPRITE_SCALE, 48.0f * GAME_ACTOR_SPRITE_SCALE), 0.0f, vec2(0.167f, 1.0f), vec2(0.167f, 0.0f), vec3(1.0f, 1.0f, 1.0f), 0); // attack
-    sprite_init(&context.game.player.sprites[6], &context.resources.textures[9], vec2(0.167f, 1.0f), vec2(0.501f, 0.0f), vec2(0.0f, 0.0f), vec2(GAME_ACTOR_SPRITE_SCALE * 48.0f, GAME_ACTOR_SPRITE_SCALE * 48.0f), 0.0f, vec3(1.0f, 1.0f, 1.0f), 0, 0); // death
+    sprite_init(&context.game.player.sprites[0], &context.res.textures[3], vec2(0.25f, 1.0f), vec2(0.0f, 0.0f), vec2(0.0f, 0.0f), vec2(GAME_ACTOR_SPRITE_SCALE * 17.0f, GAME_ACTOR_SPRITE_SCALE * 34.0f), 0.0f, vec3(1.0f, 1.0f, 1.0f), 0, 0); // idle
+    // sprite_init(&context.game.player.sprites[1], &context.res.textures[4], vec2(0.0f, 0.0f), vec2(48.0f * GAME_ACTOR_SPRITE_SCALE, 48.0f * GAME_ACTOR_SPRITE_SCALE), 0.0f, vec2(0.25f, 1.0f), vec2(0.25f, 0.0f), vec3(1.0f, 1.0f, 1.0f), 0); // jump
+    // sprite_init(&context.game.player.sprites[2], &context.res.textures[5], vec2(0.0f, 0.0f), vec2(48.0f * GAME_ACTOR_SPRITE_SCALE, 48.0f * GAME_ACTOR_SPRITE_SCALE), 0.0f, vec2(0.167f, 1.0f), vec2(0.167f, 0.0f), vec3(1.0f, 1.0f, 1.0f), 0); // double jump
+    sprite_init(&context.game.player.sprites[3], &context.res.textures[6],vec2(0.167f, 1.0f), vec2(0.0f, 0.0f), vec2(0.0f, 0.0f), vec2(GAME_ACTOR_SPRITE_SCALE * 17.0f, GAME_ACTOR_SPRITE_SCALE * 33.0f), 0.0f, vec3(1.0f, 1.0f, 1.0f), 0, 0); // run
+    sprite_init(&context.game.player.sprites[4], &context.res.textures[7], vec2(1.0f, 1.0f), vec2(0.0f, 0.0f), vec2(0.0f, 0.0f), vec2(GAME_ACTOR_SPRITE_SCALE * 16.0f, GAME_ACTOR_SPRITE_SCALE * 27.0f), 0.0f, vec3(1.0f, 1.0f, 1.0f), 0, 0); // crouch
+    // sprite_init(&context.game.player.sprites[5], &context.res.textures[8], vec2(0.0f, 0.0f), vec2(48.0f * GAME_ACTOR_SPRITE_SCALE, 48.0f * GAME_ACTOR_SPRITE_SCALE), 0.0f, vec2(0.167f, 1.0f), vec2(0.167f, 0.0f), vec3(1.0f, 1.0f, 1.0f), 0); // attack
+    sprite_init(&context.game.player.sprites[6], &context.res.textures[9], vec2(0.167f, 1.0f), vec2(0.501f, 0.0f), vec2(0.0f, 0.0f), vec2(GAME_ACTOR_SPRITE_SCALE * 48.0f, GAME_ACTOR_SPRITE_SCALE * 48.0f), 0.0f, vec3(1.0f, 1.0f, 1.0f), 0, 0); // death
 
     context.game.enemy.pos = vec2((float) WINDOW_WIDTH - 100.0f - (GAME_ACTOR_SPRITE_SCALE * 16.0f), 100.0f);
     context.game.enemy.rigb = (rigidbody_t) {.vel = vec2(0.0f, 0.0f), .force = vec2(0.0f, 0.0f), .mass = 1.0f, .grav = 1.0f, .fric = 0.9f, .drag = 0.94f, .bounce = 0.0f};
@@ -1686,22 +1682,22 @@ void game_init(void) {
     context.game.enemy.kills = 0;
     context.game.enemy.deaths = 0;
 
-    sprite_init(&context.game.enemy.sprites[0], &context.resources.textures[10], vec2(1.0f, 1.0f), vec2(0.0f, 0.0f), vec2(0.0f, 0.0f), vec2(GAME_ACTOR_SPRITE_SCALE * 20.0f, GAME_ACTOR_SPRITE_SCALE * 35.0f), 0.0f, vec3(1.0f, 1.0f, 1.0f), 0, 0); // idle
-    // sprite_init(&context.game.enemy.sprites[1], &context.resources.textures[11], vec2(0.0f, 0.0f), vec2(48.0f * GAME_ACTOR_SPRITE_SCALE, 48.0f * GAME_ACTOR_SPRITE_SCALE), 0.0f, vec2(0.25f, 1.0f), vec2(0.25f, 0.0f), vec3(1.0f, 1.0f, 1.0f), 0); // jump
-    // sprite_init(&context.game.enemy.sprites[2], &context.resources.textures[12], vec2(0.0f, 0.0f), vec2(48.0f * GAME_ACTOR_SPRITE_SCALE, 48.0f * GAME_ACTOR_SPRITE_SCALE), 0.0f, vec2(0.167f, 1.0f), vec2(0.167f, 0.0f), vec3(1.0f, 1.0f, 1.0f), 0); // double jump
-    sprite_init(&context.game.enemy.sprites[3], &context.resources.textures[13],vec2(0.167f, 1.0f), vec2(0.0f, 0.0f), vec2(0.0f, 0.0f), vec2(GAME_ACTOR_SPRITE_SCALE * 17.0f, GAME_ACTOR_SPRITE_SCALE * 32.0f), 0.0f, vec3(1.0f, 1.0f, 1.0f), 0, 0); // run
-    sprite_init(&context.game.enemy.sprites[4], &context.resources.textures[14], vec2(1.0f, 1.0f), vec2(0.0f, 0.0f), vec2(0.0f, 0.0f), vec2(GAME_ACTOR_SPRITE_SCALE * 18.0f, GAME_ACTOR_SPRITE_SCALE * 27.0f), 0.0f, vec3(1.0f, 1.0f, 1.0f), 0, 0); // crouch
-    // sprite_init(&context.game.enemy.sprites[5], &context.resources.textures[15], vec2(0.0f, 0.0f), vec2(48.0f * GAME_ACTOR_SPRITE_SCALE, 48.0f * GAME_ACTOR_SPRITE_SCALE), 0.0f, vec2(0.167f, 1.0f), vec2(0.167f, 0.0f), vec3(1.0f, 1.0f, 1.0f), 0); // attack
-    sprite_init(&context.game.enemy.sprites[6], &context.resources.textures[16], vec2(0.167f, 1.0f), vec2(0.501f, 0.0f), vec2(0.0f, 0.0f), vec2(GAME_ACTOR_SPRITE_SCALE * 48.0f, GAME_ACTOR_SPRITE_SCALE * 48.0f), 0.0f, vec3(1.0f, 1.0f, 1.0f), 0, 0); // death
+    sprite_init(&context.game.enemy.sprites[0], &context.res.textures[10], vec2(1.0f, 1.0f), vec2(0.0f, 0.0f), vec2(0.0f, 0.0f), vec2(GAME_ACTOR_SPRITE_SCALE * 20.0f, GAME_ACTOR_SPRITE_SCALE * 35.0f), 0.0f, vec3(1.0f, 1.0f, 1.0f), 0, 0); // idle
+    // sprite_init(&context.game.enemy.sprites[1], &context.res.textures[11], vec2(0.0f, 0.0f), vec2(48.0f * GAME_ACTOR_SPRITE_SCALE, 48.0f * GAME_ACTOR_SPRITE_SCALE), 0.0f, vec2(0.25f, 1.0f), vec2(0.25f, 0.0f), vec3(1.0f, 1.0f, 1.0f), 0); // jump
+    // sprite_init(&context.game.enemy.sprites[2], &context.res.textures[12], vec2(0.0f, 0.0f), vec2(48.0f * GAME_ACTOR_SPRITE_SCALE, 48.0f * GAME_ACTOR_SPRITE_SCALE), 0.0f, vec2(0.167f, 1.0f), vec2(0.167f, 0.0f), vec3(1.0f, 1.0f, 1.0f), 0); // double jump
+    sprite_init(&context.game.enemy.sprites[3], &context.res.textures[13],vec2(0.167f, 1.0f), vec2(0.0f, 0.0f), vec2(0.0f, 0.0f), vec2(GAME_ACTOR_SPRITE_SCALE * 17.0f, GAME_ACTOR_SPRITE_SCALE * 32.0f), 0.0f, vec3(1.0f, 1.0f, 1.0f), 0, 0); // run
+    sprite_init(&context.game.enemy.sprites[4], &context.res.textures[14], vec2(1.0f, 1.0f), vec2(0.0f, 0.0f), vec2(0.0f, 0.0f), vec2(GAME_ACTOR_SPRITE_SCALE * 18.0f, GAME_ACTOR_SPRITE_SCALE * 27.0f), 0.0f, vec3(1.0f, 1.0f, 1.0f), 0, 0); // crouch
+    // sprite_init(&context.game.enemy.sprites[5], &context.res.textures[15], vec2(0.0f, 0.0f), vec2(48.0f * GAME_ACTOR_SPRITE_SCALE, 48.0f * GAME_ACTOR_SPRITE_SCALE), 0.0f, vec2(0.167f, 1.0f), vec2(0.167f, 0.0f), vec3(1.0f, 1.0f, 1.0f), 0); // attack
+    sprite_init(&context.game.enemy.sprites[6], &context.res.textures[16], vec2(0.167f, 1.0f), vec2(0.501f, 0.0f), vec2(0.0f, 0.0f), vec2(GAME_ACTOR_SPRITE_SCALE * 48.0f, GAME_ACTOR_SPRITE_SCALE * 48.0f), 0.0f, vec3(1.0f, 1.0f, 1.0f), 0, 0); // death
 
-    // ml
+    // ML
     game_ml_init();
 
     ml_trajectory_init(&context.game.player.traject, mem_arena_alloc(&context.arena, ML_EPISODE_STEPS * GAME_ML_INPUTS * sizeof(float)), GAME_ML_INPUTS);
     ml_trajectory_init(&context.game.enemy.traject, mem_arena_alloc(&context.arena, ML_EPISODE_STEPS * GAME_ML_INPUTS * sizeof(float)), GAME_ML_INPUTS);
 
-    // TICKER
-    context.ticker.time_of_last_frame = glfwGetTime();
+    // CLOCK
+    context.clock.lft = glfwGetTime();
 
 #ifdef DEBUG
     printf("GAME_MEMORY: Used %.2f MB / %.2f MB (%.2f%%)\n", ((float) (context.arena.used) / (1024.0f * 1024.0f)), 
@@ -1713,31 +1709,31 @@ void game_init(void) {
 }
 
 void game_update(void) {
-    while (!glfwWindowShouldClose(context.platform.window)) {
+    while (!glfwWindowShouldClose(context.sys.window)) {
 
-        // TICKER
+        // CLOCK
         const double time = glfwGetTime();
-        context.ticker.time_between_frames = time - context.ticker.time_of_last_frame;
-        context.ticker.time_of_last_frame = time;
+        context.clock.dt = time - context.clock.lft;
+        context.clock.lft = time;
 
         // framerate
-        context.ticker.framerate.timer += context.ticker.time_between_frames;
-        // context.ticker.framerate.counter++;
+        context.clock.framerate.timer += context.clock.dt;
+        // context.clock.framerate.counter++;
 
-        if (context.ticker.framerate.timer >= 1.0f) {
-            context.ticker.framerate.value = (uint32_t) context.ticker.framerate.counter / context.ticker.framerate.timer;
-            context.ticker.framerate.timer -= 1.0f;
-            context.ticker.framerate.counter = 0;
+        if (context.clock.framerate.timer >= 1.0f) {
+            context.clock.framerate.value = (uint32_t) context.clock.framerate.counter / context.clock.framerate.timer;
+            context.clock.framerate.timer -= 1.0f;
+            context.clock.framerate.counter = 0;
         }
 
         // physics
-        if (context.ticker.time_between_frames > 0.25f) {
-            context.ticker.time_between_frames = 0.25f;
+        if (context.clock.dt > 0.25f) {
+            context.clock.dt = 0.25f;
         }
 
-        context.ticker.physics.accumulator += context.ticker.time_between_frames;
+        context.clock.physics.accum += context.clock.dt;
 
-        while (context.ticker.physics.accumulator >= GAME_SIMULATION_FIXED_TIMESTEP) {
+        while (context.clock.physics.accum >= GAME_SIMULATION_FIXED_TIMESTEP) {
             
             // TODO save previous actors states
 
@@ -1766,7 +1762,6 @@ void game_update(void) {
                 }
 
                 // ml
-                uint8_t timeout = 0;
                 if (context.game.player.traject.steps >= 600 && (context.game.player.alive && context.game.enemy.alive)) {
                     context.game.player.alive = 0;
                     context.game.enemy.alive = 0;
@@ -1781,18 +1776,18 @@ void game_update(void) {
                     context.game.enemy.animation.tick = 0;
                     context.game.enemy.animation.lock = 1;
 
-                    timeout = 1;
+                    context.ml.capped = 1;
                 }
 
                 if ((!context.game.player.alive || !context.game.enemy.alive) && (!context.game.player.animation.lock && !context.game.enemy.animation.lock)) {
 
                     if (context.game.player.traject.steps > 0) {
-                        float term = timeout ? -10.0f : (context.game.player.alive ? (context.game.enemy.alive ? 0.0f : 150.0f) : -50.0f);
+                        float term = context.ml.capped ? -10.0f : (context.game.player.alive ? (context.game.enemy.alive ? 0.0f : 150.0f) : -50.0f);
                         context.game.player.traject.rewards[context.game.player.traject.steps - 1] += term;
                         ml_network_episode_train(&context.ml.network, context.ml.region, &context.game.player.traject);
                     }
                     if (context.game.enemy.traject.steps > 0) {
-                        float term = timeout ? -10.0f : (context.game.enemy.alive ? (context.game.player.alive ? 0.0f : 150.0f) : -50.0f);
+                        float term = context.ml.capped ? -10.0f : (context.game.enemy.alive ? (context.game.player.alive ? 0.0f : 150.0f) : -50.0f);
                         context.game.enemy.traject.rewards[context.game.enemy.traject.steps - 1] += term;
                         ml_network_episode_train(&context.ml.network, context.ml.region, &context.game.enemy.traject);
                     }
@@ -1803,10 +1798,11 @@ void game_update(void) {
                     // level
                     context.game.level.turn++;
                     
-                    if (!timeout) {
+                    if (!context.ml.capped) {
                         if (!context.game.player.alive) {context.game.player.deaths++; context.game.enemy.kills++;}
                         if (!context.game.enemy.alive) {context.game.enemy.deaths++; context.game.player.kills++;}
                     }
+                    context.ml.capped = 0;
 
                     game_level_reset();
                 }
@@ -1820,10 +1816,10 @@ void game_update(void) {
             }
 
             // animation
-            context.ticker.animation.accumulator += GAME_SIMULATION_FIXED_TIMESTEP;
+            context.clock.animation.accum += GAME_SIMULATION_FIXED_TIMESTEP;
 
-            while (context.ticker.animation.accumulator >= GAME_ANIMATION_FIXED_TIMESTEP) {
-                context.ticker.animation.accumulator -= GAME_ANIMATION_FIXED_TIMESTEP;
+            while (context.clock.animation.accum >= GAME_ANIMATION_FIXED_TIMESTEP) {
+                context.clock.animation.accum -= GAME_ANIMATION_FIXED_TIMESTEP;
 
                 // player
                 if (context.game.player.action == ACTOR_ACTION_DEATH) {
@@ -1849,17 +1845,17 @@ void game_update(void) {
             }
 
             // physics
-            context.ticker.physics.accumulator -= GAME_SIMULATION_FIXED_TIMESTEP;
+            context.clock.physics.accum -= GAME_SIMULATION_FIXED_TIMESTEP;
         }
 
-        // double alpha = context.clock.accumulator / GAME_SIMULATION_FIXED_TIMESTEP;
+        // double alpha = context.clock.accum / GAME_SIMULATION_FIXED_TIMESTEP;
 
         // RENDERER
         static uint32_t fastforward = 0;
         fastforward++;
 
         if (fastforward % 10 == 0) {
-            context.ticker.framerate.counter++;
+            context.clock.framerate.counter++;
             context.renderer.time = time;
 
             // level
@@ -1993,20 +1989,20 @@ void game_update(void) {
             renderer_frame_command_push(&context.renderer, command);
 
             uint16_t offset = 0;
-            if (context.ticker.framerate.value >= 10000) offset = (9.0f * FONT_WIDTH * 2.0f) + 16.0f;
-            else if (context.ticker.framerate.value >= 1000 && context.ticker.framerate.value < 10000) offset = (8.0f * FONT_WIDTH * 2.0f) + 16.0f;
-            else if (context.ticker.framerate.value >= 100 && context.ticker.framerate.value < 1000) offset = (7.0f * FONT_WIDTH * 2.0f) + 16.0f;
-            else if (context.ticker.framerate.value < 100) offset = (6.0f * FONT_WIDTH * 2.0f) + 16.0f;
+            if (context.clock.framerate.value >= 10000) offset = (9.0f * FONT_WIDTH * 2.0f) + 16.0f;
+            else if (context.clock.framerate.value >= 1000 && context.clock.framerate.value < 10000) offset = (8.0f * FONT_WIDTH * 2.0f) + 16.0f;
+            else if (context.clock.framerate.value >= 100 && context.clock.framerate.value < 1000) offset = (7.0f * FONT_WIDTH * 2.0f) + 16.0f;
+            else if (context.clock.framerate.value < 100) offset = (6.0f * FONT_WIDTH * 2.0f) + 16.0f;
 
             command.pos = vec2((float) WINDOW_WIDTH - offset, (float) (WINDOW_HEIGHT - 16.0f));
-            sprintf(command.data.text.content, "FPS %u", context.ticker.framerate.value);
+            sprintf(command.data.text.content, "FPS %u", context.clock.framerate.value);
             renderer_frame_command_push(&context.renderer, command);
 
             renderer_draw(&context.renderer);
             renderer_frame_clear(&context.renderer);
 
             // OPENGL
-            glfwSwapBuffers(context.platform.window);
+            glfwSwapBuffers(context.sys.window);
         }
 
         // OPENGL
@@ -2020,14 +2016,14 @@ void game_stop(void) { // first part is probably redundant
     renderer_destroy(&context.renderer);
 
     for (uint32_t i = 0; i < GAME_RESOURCES_TEXTURE_ARRAY_SIZE; i++) {
-        if (context.resources.textures[i].id) texture_destroy(&context.resources.textures[i]);
+        if (context.res.textures[i].id) texture_destroy(&context.res.textures[i]);
     }
 
     for (uint32_t i = 0; i < GAME_RESOURCES_SHADER_ARRAY_SIZE; i++) {
-        if (context.resources.shaders[i].program) shader_destroy(&context.resources.shaders[i]);
+        if (context.res.shaders[i].program) shader_destroy(&context.res.shaders[i]);
     }
 
-    glfwDestroyWindow(context.platform.window);
+    glfwDestroyWindow(context.sys.window);
     glfwTerminate();
 
 }
