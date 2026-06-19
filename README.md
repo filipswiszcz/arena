@@ -35,6 +35,8 @@ git clone https://github.com/filipswiszcz/arena.git
 cd arena
 .\build.bat [debug/dev/release]
 ```
+> [!NOTE]
+> Run the executable from the `bin/` directory (e.g. `./bin/game` on Linux/macOS or `.\bin\game.exe` on Windows)
 
 ## Key bindings
 |  |  |
