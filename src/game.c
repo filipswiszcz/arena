@@ -126,8 +126,8 @@ void texture_init(texture_t *texture, char *path) {
     glGenTextures(1, &texture->id);
     glBindTexture(GL_TEXTURE_2D, texture->id);
 
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
 
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
@@ -1628,7 +1628,7 @@ void game_init(void) {
 
     texture_init(&context.res.textures[10], "res/texture/enemy/cyborg_idle-3.png"); 
     texture_init(&context.res.textures[11], "res/texture/enemy/cyborg_jump.png");
-    texture_init(&context.res.textures[12], "res/texture/enemy/cyborg_double_jump.png");
+    texture_init(&context.res.textures[12], "res/texture/enemy/cyborg_double_jump-compact.png");
     texture_init(&context.res.textures[13], "res/texture/enemy/cyborg_run-compact.png");
     texture_init(&context.res.textures[14], "res/texture/enemy/cyborg_crouch-2.png");
     texture_init(&context.res.textures[15], "res/texture/enemy/cyborg_attack.png");
@@ -1640,8 +1640,8 @@ void game_init(void) {
 
     // GAME
     context.game.state = GAME_STATE_LOAD;
-    // context.game.controller = GAME_CONTROLLER_AUTO;
-    context.game.controller = GAME_CONTROLLER_MANUAL;
+    context.game.controller = GAME_CONTROLLER_AUTO;
+    // context.game.controller = GAME_CONTROLLER_MANUAL;
     context.game.level.sprites = mem_arena_alloc(&context.arena, GAME_LEVEL_SPRITE_ARRAY_SIZE * sizeof(sprite_t));
     context.game.level.bullets = mem_arena_alloc(&context.arena, GAME_LEVEL_BULLET_ARRAY_SIZE * sizeof(bullet_t));
     for (uint32_t i = 0; i < GAME_LEVEL_BULLET_ARRAY_SIZE; i++) context.game.level.bullets[i] = (bullet_t) {0}; // is there a cooler way to init this?
@@ -1672,7 +1672,6 @@ void game_init(void) {
     // sprite_init(&sprite, "punk_run", ..);
     sprite_init(&context.game.player.sprites[0], &context.res.textures[3], vec2(0.25f, 1.0f), vec2(0.0f, 0.0f), vec2(0.0f, 0.0f), vec2(GAME_ACTOR_SPRITE_SCALE * 17.0f, GAME_ACTOR_SPRITE_SCALE * 34.0f), 0.0f, vec3(1.0f, 1.0f, 1.0f), 0, 0); // idle
     // sprite_init(&context.game.player.sprites[1], &context.res.textures[4], vec2(0.0f, 0.0f), vec2(48.0f * GAME_ACTOR_SPRITE_SCALE, 48.0f * GAME_ACTOR_SPRITE_SCALE), 0.0f, vec2(0.25f, 1.0f), vec2(0.25f, 0.0f), vec3(1.0f, 1.0f, 1.0f), 0); // jump
-    // sprite_init(&context.game.player.sprites[2], &context.res.textures[5], vec2(0.0f, 0.0f), vec2(48.0f * GAME_ACTOR_SPRITE_SCALE, 48.0f * GAME_ACTOR_SPRITE_SCALE), 0.0f, vec2(0.167f, 1.0f), vec2(0.167f, 0.0f), vec3(1.0f, 1.0f, 1.0f), 0); // double jump
     sprite_init(&context.game.player.sprites[2], &context.res.textures[5], vec2(0.25f, 1.0f), vec2(0.0f, 0.0f), vec2(0.0f, 0.0f), vec2(GAME_ACTOR_SPRITE_SCALE * 31.0f, GAME_ACTOR_SPRITE_SCALE * 32.0f), 0.0f, vec3(1.0f, 1.0f, 1.0f), 0, 0); // double jump
     sprite_init(&context.game.player.sprites[3], &context.res.textures[6],vec2(0.167f, 1.0f), vec2(0.0f, 0.0f), vec2(0.0f, 0.0f), vec2(GAME_ACTOR_SPRITE_SCALE * 17.0f, GAME_ACTOR_SPRITE_SCALE * 33.0f), 0.0f, vec3(1.0f, 1.0f, 1.0f), 0, 0); // run
     sprite_init(&context.game.player.sprites[4], &context.res.textures[7], vec2(1.0f, 1.0f), vec2(0.0f, 0.0f), vec2(0.0f, 0.0f), vec2(GAME_ACTOR_SPRITE_SCALE * 16.0f, GAME_ACTOR_SPRITE_SCALE * 27.0f), 0.0f, vec3(1.0f, 1.0f, 1.0f), 0, 0); // crouch
@@ -1695,7 +1694,7 @@ void game_init(void) {
 
     sprite_init(&context.game.enemy.sprites[0], &context.res.textures[10], vec2(1.0f, 1.0f), vec2(0.0f, 0.0f), vec2(0.0f, 0.0f), vec2(GAME_ACTOR_SPRITE_SCALE * 20.0f, GAME_ACTOR_SPRITE_SCALE * 35.0f), 0.0f, vec3(1.0f, 1.0f, 1.0f), 0, 0); // idle
     // sprite_init(&context.game.enemy.sprites[1], &context.res.textures[11], vec2(0.0f, 0.0f), vec2(48.0f * GAME_ACTOR_SPRITE_SCALE, 48.0f * GAME_ACTOR_SPRITE_SCALE), 0.0f, vec2(0.25f, 1.0f), vec2(0.25f, 0.0f), vec3(1.0f, 1.0f, 1.0f), 0); // jump
-    // sprite_init(&context.game.enemy.sprites[2], &context.res.textures[12], vec2(0.0f, 0.0f), vec2(48.0f * GAME_ACTOR_SPRITE_SCALE, 48.0f * GAME_ACTOR_SPRITE_SCALE), 0.0f, vec2(0.167f, 1.0f), vec2(0.167f, 0.0f), vec3(1.0f, 1.0f, 1.0f), 0); // double jump
+    sprite_init(&context.game.enemy.sprites[2], &context.res.textures[12], vec2(0.25f, 1.0f), vec2(0.0f, 0.0f), vec2(0.0f, 0.0f), vec2(GAME_ACTOR_SPRITE_SCALE * 31.0f, GAME_ACTOR_SPRITE_SCALE * 32.0f), 0.0f, vec3(1.0f, 1.0f, 1.0f), 0, 0); // double jump
     sprite_init(&context.game.enemy.sprites[3], &context.res.textures[13],vec2(0.167f, 1.0f), vec2(0.0f, 0.0f), vec2(0.0f, 0.0f), vec2(GAME_ACTOR_SPRITE_SCALE * 17.0f, GAME_ACTOR_SPRITE_SCALE * 32.0f), 0.0f, vec3(1.0f, 1.0f, 1.0f), 0, 0); // run
     sprite_init(&context.game.enemy.sprites[4], &context.res.textures[14], vec2(1.0f, 1.0f), vec2(0.0f, 0.0f), vec2(0.0f, 0.0f), vec2(GAME_ACTOR_SPRITE_SCALE * 18.0f, GAME_ACTOR_SPRITE_SCALE * 27.0f), 0.0f, vec3(1.0f, 1.0f, 1.0f), 0, 0); // crouch
     // sprite_init(&context.game.enemy.sprites[5], &context.res.textures[15], vec2(0.0f, 0.0f), vec2(48.0f * GAME_ACTOR_SPRITE_SCALE, 48.0f * GAME_ACTOR_SPRITE_SCALE), 0.0f, vec2(0.167f, 1.0f), vec2(0.167f, 0.0f), vec3(1.0f, 1.0f, 1.0f), 0); // attack
@@ -1757,7 +1756,7 @@ void game_update(void) {
                 if (context.game.controller == GAME_CONTROLLER_AUTO) {
                     game_ml_step(&context.game.player, &context.game.enemy, &context.game.player.traject, 1.0f);
                 }
-                // game_ml_step(&context.game.enemy, &context.game.player, &context.game.enemy.traject, -1.0f);
+                game_ml_step(&context.game.enemy, &context.game.player, &context.game.enemy.traject, -1.0f);
 
                 // physics
                 actor_t *actors[] = {&context.game.player, &context.game.enemy};
@@ -1833,7 +1832,7 @@ void game_update(void) {
                 context.clock.animation.accum -= GAME_ANIMATION_FIXED_TIMESTEP;
 
                 // player
-                if (context.game.player.action == ACTOR_ACTION_DEATH || context.game.player.action == ACTOR_ACTION_DOUBLE_JUMP) {
+                if (context.game.player.action == ACTOR_ACTION_DOUBLE_JUMP || context.game.player.action == ACTOR_ACTION_DEATH) {
                     context.game.player.sprites[context.game.player.action].uv.offset.x = (context.game.player.sprites[context.game.player.action].uv.scale.x * context.game.player.animation.tick);
                     if (context.game.player.animation.tick < context.game.player.animation.step) context.game.player.animation.tick++;
                     else context.game.player.animation.lock = 0;
@@ -1843,7 +1842,7 @@ void game_update(void) {
                     else if (!context.game.player.animation.lock) context.game.player.animation.tick = 0;
                 }
 
-                if (context.game.enemy.action == ACTOR_ACTION_DEATH) {
+                if (context.game.enemy.action == ACTOR_ACTION_DOUBLE_JUMP || context.game.enemy.action == ACTOR_ACTION_DEATH) {
                     context.game.enemy.sprites[context.game.enemy.action].uv.offset.x = (context.game.enemy.sprites[context.game.enemy.action].uv.scale.x * context.game.enemy.animation.tick);
                     if (context.game.enemy.animation.tick < context.game.enemy.animation.step) context.game.enemy.animation.tick++;
                     else context.game.enemy.animation.lock = 0;
@@ -1945,7 +1944,7 @@ void game_update(void) {
             if (context.game.enemy.alive || context.game.enemy.animation.lock) {
 
                 // TEMP
-                uint8_t action = (context.game.enemy.action == ACTOR_ACTION_CROUCH) ? 4 : (context.game.enemy.action == ACTOR_ACTION_IDLE ? 0 : ((context.game.enemy.action == ACTOR_ACTION_RUN) ? 3 : 6));
+                uint8_t action = (context.game.enemy.action == ACTOR_ACTION_CROUCH) ? 4 : (context.game.enemy.action == ACTOR_ACTION_RUN) ? 3 : (context.game.enemy.action == ACTOR_ACTION_DOUBLE_JUMP) ? 2 : (context.game.enemy.action == ACTOR_ACTION_DEATH) ? 6 : 0;
                 // TEMP
 
                 renderer_frame_command_push(&context.renderer, (command_t) {
@@ -1962,7 +1961,7 @@ void game_update(void) {
                     .flip = context.game.enemy.flip
                 });
 
-                if (context.game.enemy.action != ACTOR_ACTION_DEATH) {
+                if (context.game.enemy.action != ACTOR_ACTION_DOUBLE_JUMP && context.game.enemy.action != ACTOR_ACTION_DEATH) {
                     renderer_frame_command_push(&context.renderer, (command_t) {
                         .type = COMMAND_TYPE_SPRITE,
                         .data.sprite = {
