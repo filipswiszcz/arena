@@ -1117,8 +1117,8 @@ void game_level_reset(void) {
     context.game.enemy.alive = 1;
     context.game.enemy.flip = 1;
 
-    game_actor_trans(&context.game.player, vec2((50.0f + (ml_random() * 200.0f)), 100.0f), 0.0f, vec2(1.0f, 1.0f));
-    game_actor_trans(&context.game.enemy, vec2(((float) WINDOW_WIDTH - 50.0f - (GAME_ACTOR_SPRITE_SCALE * 16.0f) - (ml_random() * 200.0f)), 100.0f), 0.0f, vec2(1.0f, 1.0f));
+    game_actor_trans(&context.game.player, vec2((50.0f + (ml_random() * 200.0f)), 50.0f), 0.0f, vec2(1.0f, 1.0f));
+    game_actor_trans(&context.game.enemy, vec2(((float) WINDOW_WIDTH - 50.0f - (context.game.enemy.sprites[context.game.enemy.action].size.x) - (ml_random() * 200.0f)), 50.0f), 0.0f, vec2(1.0f, 1.0f));
 
     for (uint32_t i = 0; i < GAME_LEVEL_BULLET_ARRAY_SIZE; i++) context.game.level.bullets[i].used = 0;
 }
@@ -1143,11 +1143,8 @@ void game_bullet_colls_handle(bullet_t *bullet, collider_t **colls) { // it has 
 
     for (uint32_t i = 0; i < 2; i++) {
         if (game_collider_aabb_check(&bullet->coll, colls[i])) {
-            if (bullet->shooter->coll.min.x == colls[i]->min.x
-                && bullet->shooter->coll.min.y == colls[i]->min.y
-                && bullet->shooter->coll.max.x == colls[i]->max.x
-                && bullet->shooter->coll.max.y == colls[i]->max.y) continue;
-
+            if (bullet->shooter->coll.min.x == colls[i]->min.x && bullet->shooter->coll.min.y == colls[i]->min.y
+                && bullet->shooter->coll.max.x == colls[i]->max.x && bullet->shooter->coll.max.y == colls[i]->max.y) continue;
             bullet->used = 0;
         }
     }
@@ -1155,10 +1152,17 @@ void game_bullet_colls_handle(bullet_t *bullet, collider_t **colls) { // it has 
 
 void game_bullet_actor_colls_handle(bullet_t *bullet, actor_t **actors) {
     vec2_t prevpos = bullet->pos;
-
     bullet->pos.x += bullet->rigb.vel.x * GAME_SIMULATION_FIXED_TIMESTEP;
-    bullet->coll.min = vec2((prevpos.x < bullet->pos.x) ? prevpos.x : bullet->pos.x, bullet->pos.y);
-    bullet->coll.max = vec2(((prevpos.x > bullet->pos.x) ? prevpos.x : bullet->pos.x) + (GAME_ACTOR_SPRITE_SCALE * 8.0f), bullet->pos.y + (GAME_ACTOR_SPRITE_SCALE * 4.0f));
+    bullet->pos.y += bullet->rigb.vel.y * GAME_SIMULATION_FIXED_TIMESTEP;
+
+    bullet->coll.min = vec2(
+        (prevpos.x < bullet->pos.x) ? prevpos.x : bullet->pos.x,
+        (prevpos.y < bullet->pos.y) ? prevpos.y : bullet->pos.y
+    );
+    bullet->coll.max = vec2(
+        ((prevpos.x > bullet->pos.x) ? prevpos.x : bullet->pos.x) + (GAME_ACTOR_SPRITE_SCALE * 8.0f),
+        ((prevpos.y > bullet->pos.y) ? prevpos.y : bullet->pos.y) + (GAME_ACTOR_SPRITE_SCALE * 4.0f)
+    );
     bullet->coll.mask = GAME_COLL_NONE;
 
     for (uint32_t i = 0; i < 2; i++) {
@@ -1179,6 +1183,8 @@ void game_bullet_actor_colls_handle(bullet_t *bullet, actor_t **actors) {
             }
 
             bullet->used = 0;
+
+            return;
         }
     }
 }
@@ -1226,31 +1232,6 @@ void game_actor_move(actor_t *actor, float xacc, uint8_t jump, uint8_t crouch) {
 
     actor->rigb.force.x = 0.0f;
     actor->rigb.force.y = 0.0f;
-
-    // if (actor->crouched) {
-    //     actor->action = ACTOR_ACTION_CROUCH;
-    // } else if (!actor->grounded) {
-    //     if (actor->jumped == 2) {
-    //         if (actor->action != ACTOR_ACTION_DOUBLE_JUMP) {
-    //             actor->action = ACTOR_ACTION_DOUBLE_JUMP;
-    //             actor->animation.step = ACTOR_ANIMATION_STEP_4;
-    //             actor->animation.tick = 0;
-    //             actor->animation.lock = 1;
-    //         }
-    //     } else {
-    //         if (actor->action != ACTOR_ACTION_IDLE) {
-    //             actor->action = ACTOR_ACTION_IDLE;
-    //             actor->animation.step = ACTOR_ANIMATION_STEP_4;
-    //             actor->animation.tick = 0;
-    //             actor->animation.lock = 0;
-    //         }
-    //     }
-    // } else if (xacc != 0.0f) {
-    //     actor->action = ACTOR_ACTION_RUN;
-    //     actor->animation.step = ACTOR_ANIMATION_STEP_6;
-    // } else {
-    //     actor->action = ACTOR_ACTION_IDLE;
-    // }
 
     if (actor->crouched) {
         if (actor->action != ACTOR_ACTION_CROUCH) {
@@ -1300,7 +1281,7 @@ void game_actor_shoot(actor_t *actor) {
 
     bullet_t bullet = {
         .pos = pos,
-        .rigb = (rigidbody_t) {.vel = vec2(0.0f, 0.0f), .force = vec2(actor->flip ? -256.0f : 256.0f, 0.0f), .mass = 0.01f, .grav = 1.0f, .fric = 0.9f, .drag = 0.99f, .bounce = 0.1f},
+        .rigb = (rigidbody_t) {.vel = vec2(0.0f, 0.0f), .force = vec2(actor->flip ? -128.0f : 128.0f, 0.0f), .mass = 0.01f, .grav = 0.0f, .fric = 1.0f, .drag = 0.99f, .bounce = 0.0f},
         .coll = (collider_t) {.min = pos, .max = vec2(pos.x + (GAME_ACTOR_SPRITE_SCALE * 8.0f), pos.y + (GAME_ACTOR_SPRITE_SCALE * 4.0f)), .mask = GAME_COLL_NONE},
         .sprite = context.game.level.sprites[1],
         .shooter = actor,
@@ -1320,8 +1301,7 @@ void game_actor_colls_handle(actor_t *actor, collider_t **colls) {
 
     actor->pos.x += actor->rigb.vel.x * GAME_SIMULATION_FIXED_TIMESTEP;
     actor->coll.min = actor->pos;
-    if (actor->crouched) actor->coll.max = vec2(actor->pos.x + actor->sprites[actor->action].size.x, actor->pos.y + (actor->sprites[actor->action].size.y / 2.0f));
-    else actor->coll.max = vec2(actor->pos.x + actor->sprites[actor->action].size.x, actor->pos.y + actor->sprites[actor->action].size.y);
+    actor->coll.max = vec2(actor->pos.x + actor->sprites[actor->action].size.x, actor->crouched ? actor->pos.y + (actor->sprites[actor->action].size.y * 0.5f) : actor->pos.y + actor->sprites[actor->action].size.y);
     actor->coll.mask = GAME_COLL_NONE;
     actor->grounded = 0;
 
@@ -1341,8 +1321,7 @@ void game_actor_colls_handle(actor_t *actor, collider_t **colls) {
 
     actor->pos.y += actor->rigb.vel.y * GAME_SIMULATION_FIXED_TIMESTEP;
     actor->coll.min = actor->pos;
-    if (actor->crouched) actor->coll.max = vec2(actor->pos.x + actor->sprites[actor->action].size.x, actor->pos.y + (actor->sprites[actor->action].size.y / 2));
-    else actor->coll.max = vec2(actor->pos.x + actor->sprites[actor->action].size.x, actor->pos.y + actor->sprites[actor->action].size.y);
+    actor->coll.max = vec2(actor->pos.x + actor->sprites[actor->action].size.x, actor->crouched ? actor->pos.y + (actor->sprites[actor->action].size.y * 0.5f) : actor->pos.y + actor->sprites[actor->action].size.y);
 
     for (uint32_t i = 0; i < 2; i++) {
         if (game_collider_aabb_check(&actor->coll, colls[i])) {
@@ -1552,10 +1531,7 @@ void _game_keyboard_handle(void) { // it has to rewritten as well (try to handle
 
     // KEY ESC (reset)
     if (context.sys.keys[GLFW_KEY_ESCAPE]) {
-        if (context.game.state != GAME_STATE_RESET) {
-            // context.game.state = GAME_STATE_RESET;
-            game_level_reset();
-        }
+        if (context.game.state != GAME_STATE_RESET) game_level_reset();
     }
     if (!context.sys.keys[GLFW_KEY_ESCAPE]) { // quick workaround
         if (context.game.state == GAME_STATE_RESET) context.game.state = GAME_STATE_PLAY;
@@ -1879,6 +1855,7 @@ void game_update(void) {
                     context.ml.capped = 0;
 
                     game_level_reset();
+
                 }
 
                 // cooldown
