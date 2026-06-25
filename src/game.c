@@ -911,8 +911,8 @@ uint8_t GAME_MEMORY[GAME_MEMORY_CAPACITY];
 #define GAME_ACTOR_SPRITE_SCALE 2
 #define GAME_ACTOR_SHOOT_COOLDOWN 30
 
-#define GAME_ML_INPUTS 15
-#define GAME_ML_OUTPUTS 8
+#define GAME_ML_INPUTS 16
+#define GAME_ML_OUTPUTS 9
 #define GAME_ML_HIDDEN_NEURONS 128
 
 typedef enum {
@@ -1421,7 +1421,8 @@ void game_ml_step(actor_t *actor, actor_t *enemy, ml_trajectory_t *traject, int8
         ((!actor->flip && enemy->pos.x > actor->pos.x) || (actor->flip && enemy->pos.x < actor->pos.x)),
         ((quadrant == 1.0f) ? actor->pos.x : ((float) WINDOW_WIDTH - actor->pos.x)) / (float) WINDOW_WIDTH,
         enemy->cooldowns[ACTOR_COOLDOWN_SHOOT] > 0 ? 1.0f : 0.0f,
-        threat
+        threat,
+        actor->cooldowns[ACTOR_COOLDOWN_DASH] > 0 ? 1.0f : 0.0f
     };
     mat_t state = mat(inputs, 1, GAME_ML_INPUTS);
 
@@ -1433,10 +1434,10 @@ void game_ml_step(actor_t *actor, actor_t *enemy, ml_trajectory_t *traject, int8
     float xacc = 0.0f;
     uint8_t jump = 0, crouch = 0, shoot = 0, dash = 0;
 
-    int32_t actions[2] = {4, 7};
+    int32_t actions[2] = {4, 8};
 
     float sample = ml_random(), accum = 0.0f;
-    for (uint32_t i = 0; i < 5; i++) {
+    for (uint32_t i = 0; i < 6; i++) {
         accum += prob.data[i];
         if (sample <= accum) {
             actions[0] = i; break;
@@ -1444,7 +1445,7 @@ void game_ml_step(actor_t *actor, actor_t *enemy, ml_trajectory_t *traject, int8
     }
 
     sample = ml_random(), accum = 0.0f;
-    for (uint32_t i = 5; i < 8; i++) {
+    for (uint32_t i = 6; i < 9; i++) {
         accum += prob.data[i];
         if (sample <= accum) {
             actions[1] = i; break;
@@ -1455,9 +1456,11 @@ void game_ml_step(actor_t *actor, actor_t *enemy, ml_trajectory_t *traject, int8
     if (actions[0] == 2) xacc = -1.0f * quadrant;
     if (actions[0] == 3) jump = 1;
     if (actions[0] == 4) crouch = 1;
-    if (actions[1] == 5) actor->flip = (quadrant == 1.0f) ? 1 : 0;
-    if (actions[1] == 6) actor->flip = (quadrant == 1.0f) ? 0 : 1;
-    if (actions[1] == 7) {actor->flip = (quadrant == 1.0f) ? 0 : 1; shoot = 1;}
+    if (actions[0] == 5) dash = 1;
+
+    if (actions[1] == 6) actor->flip = (quadrant == 1.0f) ? 1 : 0;
+    if (actions[1] == 7) actor->flip = (quadrant == 1.0f) ? 0 : 1;
+    if (actions[1] == 8) {actor->flip = (quadrant == 1.0f) ? 0 : 1; shoot = 1;}
 
     game_actor_move(actor, xacc, jump, crouch, dash);
 
@@ -1487,6 +1490,8 @@ void game_ml_step(actor_t *actor, actor_t *enemy, ml_trajectory_t *traject, int8
     if (lowdist && actions[0] == 3) reward += 0.2f;
     if (!lowdist && actions[0] == 3) reward -= 0.1f;
     if (!lowdist && actions[0] == 4) reward -= 0.1f;
+    if (lowdist && actions[0] == 5) reward += 0.2f;
+    if (!lowdist && actions[0] == 5) reward -= 0.1f;
 
     uint8_t facing = ((!actor->flip && enemy->pos.x > actor->pos.x) || (actor->flip && enemy->pos.x < actor->pos.x));
     if (!facing) reward -= 0.05f;
@@ -1688,7 +1693,7 @@ void game_init(void) {
     texture_init(&context.res.textures[14], "res/texture/enemy/cyborg_double_jump-comp.png");
     texture_init(&context.res.textures[15], "res/texture/enemy/cyborg_run-comp.png");
     texture_init(&context.res.textures[16], "res/texture/enemy/cyborg_crouch-2.png");
-    // texture_init(&context.res.textures[17], "res/texture/enemy/cyborg_dash.png");
+    texture_init(&context.res.textures[17], "res/texture/enemy/cyborg_dash-comp.png");
     texture_init(&context.res.textures[18], "res/texture/enemy/cyborg_attack.png");
     texture_init(&context.res.textures[19], "res/texture/enemy/cyborg_death.png");
 
@@ -1698,8 +1703,8 @@ void game_init(void) {
 
     // GAME
     context.game.state = GAME_STATE_LOAD;
-    // context.game.controller = GAME_CONTROLLER_AUTO;
-    context.game.controller = GAME_CONTROLLER_MANUAL;
+    context.game.controller = GAME_CONTROLLER_AUTO;
+    // context.game.controller = GAME_CONTROLLER_MANUAL;
     context.game.level.sprites = mem_arena_alloc(&context.arena, GAME_LEVEL_SPRITE_ARRAY_SIZE * sizeof(sprite_t));
     context.game.level.bullets = mem_arena_alloc(&context.arena, GAME_LEVEL_BULLET_ARRAY_SIZE * sizeof(bullet_t));
     for (uint32_t i = 0; i < GAME_LEVEL_BULLET_ARRAY_SIZE; i++) context.game.level.bullets[i] = (bullet_t) {0}; // is there a cooler way to init this?
@@ -1756,8 +1761,8 @@ void game_init(void) {
     sprite_init(&context.game.enemy.sprites[2], &context.res.textures[14], vec2(0.25f, 1.0f), vec2(0.0f, 0.0f), vec2(0.0f, 0.0f), vec2(GAME_ACTOR_SPRITE_SCALE * 31.0f, GAME_ACTOR_SPRITE_SCALE * 32.0f), 0.0f, vec3(1.0f, 1.0f, 1.0f), 0, 0); // double jump
     sprite_init(&context.game.enemy.sprites[3], &context.res.textures[15],vec2(0.167f, 1.0f), vec2(0.0f, 0.0f), vec2(0.0f, 0.0f), vec2(GAME_ACTOR_SPRITE_SCALE * 17.0f, GAME_ACTOR_SPRITE_SCALE * 32.0f), 0.0f, vec3(1.0f, 1.0f, 1.0f), 0, 0); // run
     sprite_init(&context.game.enemy.sprites[4], &context.res.textures[16], vec2(1.0f, 1.0f), vec2(0.0f, 0.0f), vec2(0.0f, 0.0f), vec2(GAME_ACTOR_SPRITE_SCALE * 18.0f, GAME_ACTOR_SPRITE_SCALE * 27.0f), 0.0f, vec3(1.0f, 1.0f, 1.0f), 0, 0); // crouch
-    // sprite_init(&context.game.player.sprites[5], &context.res.textures[17], vec2(0.0f, 0.0f), vec2(48.0f * GAME_ACTOR_SPRITE_SCALE, 48.0f * GAME_ACTOR_SPRITE_SCALE), 0.0f, vec2(0.167f, 1.0f), vec2(0.167f, 0.0f), vec3(1.0f, 1.0f, 1.0f), 0); // dash
-    // sprite_init(&context.game.player.sprites[6], &context.res.textures[18], vec2(0.0f, 0.0f), vec2(48.0f * GAME_ACTOR_SPRITE_SCALE, 48.0f * GAME_ACTOR_SPRITE_SCALE), 0.0f, vec2(0.167f, 1.0f), vec2(0.167f, 0.0f), vec3(1.0f, 1.0f, 1.0f), 0); // attack
+    sprite_init(&context.game.enemy.sprites[5], &context.res.textures[17], vec2(0.25f, 1.0f), vec2(0.0f, 0.0f), vec2(0.0f, 0.0f), vec2(GAME_ACTOR_SPRITE_SCALE * 30.0f, GAME_ACTOR_SPRITE_SCALE * 35.0f), 0.0f, vec3(1.0f, 1.0f, 1.0f), 0, 0); // dash
+    // sprite_init(&context.game.enemy.sprites[6], &context.res.textures[18], vec2(0.0f, 0.0f), vec2(48.0f * GAME_ACTOR_SPRITE_SCALE, 48.0f * GAME_ACTOR_SPRITE_SCALE), 0.0f, vec2(0.167f, 1.0f), vec2(0.167f, 0.0f), vec3(1.0f, 1.0f, 1.0f), 0); // attack
     sprite_init(&context.game.enemy.sprites[7], &context.res.textures[19], vec2(0.167f, 1.0f), vec2(0.501f, 0.0f), vec2(0.0f, 0.0f), vec2(GAME_ACTOR_SPRITE_SCALE * 48.0f, GAME_ACTOR_SPRITE_SCALE * 48.0f), 0.0f, vec3(1.0f, 1.0f, 1.0f), 0, 0); // death
 
     // ML
@@ -1821,7 +1826,7 @@ void game_update(void) {
                 if (context.game.controller == GAME_CONTROLLER_AUTO) {
                     game_ml_step(&context.game.player, &context.game.enemy, &context.game.player.traject, 1.0f);
                 }
-                // game_ml_step(&context.game.enemy, &context.game.player, &context.game.enemy.traject, -1.0f);
+                game_ml_step(&context.game.enemy, &context.game.player, &context.game.enemy.traject, -1.0f);
 
                 // physics
                 actor_t *actors[] = {&context.game.player, &context.game.enemy};
@@ -2039,7 +2044,7 @@ void game_update(void) {
             if (context.game.enemy.alive || context.game.enemy.animation.lock) {
 
                 // TEMP
-                uint8_t action = (context.game.enemy.action == ACTOR_ACTION_CROUCH) ? 4 : (context.game.enemy.action == ACTOR_ACTION_RUN) ? 3 : (context.game.enemy.action == ACTOR_ACTION_DOUBLE_JUMP) ? 2 : (context.game.enemy.action == ACTOR_ACTION_DEATH) ? 7 : 0;
+                uint8_t action = (context.game.enemy.action == ACTOR_ACTION_CROUCH) ? 4 : (context.game.enemy.action == ACTOR_ACTION_RUN) ? 3 : (context.game.enemy.action == ACTOR_ACTION_DOUBLE_JUMP) ? 2 : (context.game.enemy.action == ACTOR_ACTION_JUMP) ? 1 : (context.game.enemy.action == ACTOR_ACTION_DASH) ? 5 : (context.game.enemy.action == ACTOR_ACTION_DEATH) ? 7 : 0;
                 // TEMP
 
                 renderer_frame_command_push(&context.renderer, (command_t) {

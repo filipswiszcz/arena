@@ -161,22 +161,22 @@ static inline void ml_network_forward_move(ml_network_t *network, const mat_t *s
     ml_mat_dot(probs, &network->hidd.outs, &network->out.weights);
     ml_mat_add(probs, probs, &network->out.biases);
 
-    float maxvs[2] = {probs->data[0], probs->data[5]};
+    float maxvs[2] = {probs->data[0], probs->data[6]};
     float expvs[2] = {0.0f, 0.0f};
     float temp = 2.0f;
 
-    for (uint32_t i = 1; i < 5; i++) if (probs->data[i] > maxvs[0]) maxvs[0] = probs->data[i];
+    for (uint32_t i = 1; i < 6; i++) if (probs->data[i] > maxvs[0]) maxvs[0] = probs->data[i];
 
-    for (uint32_t i = 0; i < 5; i++) {
+    for (uint32_t i = 0; i < 6; i++) {
         probs->data[i] = expf((probs->data[i] - maxvs[0]) / temp);
         expvs[0] += probs->data[i];
     }
 
-    for (uint32_t i = 0; i < 5; i++) probs->data[i] /= expvs[0];
+    for (uint32_t i = 0; i < 6; i++) probs->data[i] /= expvs[0];
 
-    for (uint32_t i = 6; i < 8; i++) if (probs->data[i] > maxvs[1]) maxvs[1] = probs->data[i];
+    for (uint32_t i = 7; i < 9; i++) if (probs->data[i] > maxvs[1]) maxvs[1] = probs->data[i];
 
-    for (uint32_t i = 5; i < 8; i++) {
+    for (uint32_t i = 6; i < 9; i++) {
         probs->data[i] = expf((probs->data[i] - maxvs[1]) / temp);
         expvs[1] += probs->data[i];
     }
@@ -240,11 +240,11 @@ static inline void ml_network_episode_train(ml_network_t *network, float *data, 
     for (uint32_t i = 0; i < traject->steps; i++) {
         ml_network_forward_move(network, &traject->states[i], &probs);
 
-        for (uint32_t j = 0; j < 5; j++) {
+        for (uint32_t j = 0; j < 6; j++) {
             socd.data[j] = (probs.data[j] - (j == (uint32_t) traject->actions[0][i] ? 1.0f : 0.0f)) * rewards[i];
         }
         
-        for (uint32_t j = 5; j < 8; j++) {
+        for (uint32_t j = 6; j < 9; j++) {
             socd.data[j] = (probs.data[j] - (j == (uint32_t) traject->actions[1][i] ? 1.0f : 0.0f)) * rewards[i];
         }
 
