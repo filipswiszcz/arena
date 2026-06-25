@@ -24,61 +24,181 @@
 
 #define ASSERT(_e, ...) if (!(_e)) {fprintf(stderr, __VA_ARGS__); exit(1);}
 
+#define GAME_LOG(msg, ...) ((void) 0)
+#define GAME_ASSERT(_e) ((_e) ? 1 : (GAME_LOG("%s,%d: Assertion '%s' failed\n", __FILE__, __LINE__, #_e), 0))
+
 // SHADER
+
+#define SHADER_MAX_SIZE 8192
+
+typedef enum {
+    SHADER_STATUS_SUCCESS = 0,
+    SHADER_STATUS_FILE_NOT_FOUND,
+    SHADER_STATUS_COMPILATION_FAILED,
+    SHADER_STATUS_LINK_FAILED,
+    SHADER_STATUS_CREATION_FAILED,
+    SHADER_STATUS_INITIALIZATION_FAILED
+} shader_status_t;
 
 typedef struct {
     uint32_t ids[2];
     uint32_t program;
 } shader_t;
 
-void _shader_read(char **code, char *path) {
-    FILE *file = fopen(path, "rb");
-    ASSERT(file != NULL, "FILE_READ_ERROR: %s\n", path);
+shader_status_t _shader_read(char *buffer, const char *path) {
+    if (!GAME_ASSERT(buffer != NULL)) {
+        return SHADER_STATUS_INITIALIZATION_FAILED;
+    }
+    if (!GAME_ASSERT(path != NULL)) {
+        return SHADER_STATUS_INITIALIZATION_FAILED;
+    }
 
-    fseek(file, 0, SEEK_END);
-    size_t size = ftell(file);
+    FILE *file = fopen((const char*) path, "rb");
+    if (file == NULL) {
+        return SHADER_STATUS_FILE_NOT_FOUND;
+    }
+
+    if (fseek(file, 0, SEEK_END) != 0) {
+        fclose(file);
+        return SHADER_STATUS_INITIALIZATION_FAILED;
+    }
+
+    long size = ftell(file);
+    if (size < 0 || (size_t) size >= SHADER_MAX_SIZE) {
+        fclose(file);
+        return SHADER_STATUS_INITIALIZATION_FAILED;
+    }
+
     rewind(file);
 
-    *code = (char*) malloc(size + 1);
-    fread(*code, 1, size, file);
-    (*code)[size] = '\0';
-    
+    size_t code = fread(buffer, 1, (size_t) size, file);
+    if (code != (size_t) size) {
+        fclose(file);
+        return SHADER_STATUS_INITIALIZATION_FAILED;
+    }
+
+    buffer[size] = '\0';
     fclose(file);
+
+    return SHADER_STATUS_SUCCESS;
 }
 
-void _shader_compile(uint32_t *id, uint32_t type, char *code) {
-    *id = glCreateShader(type);
+// void _shader_read(char **code, char *path) {
+//     FILE *file = fopen(path, "rb");
+//     ASSERT(file != NULL, "FILE_READ_ERROR: %s\n", path);
 
-    glShaderSource(*id, 1, (const char**) &code, NULL);
+//     fseek(file, 0, SEEK_END);
+//     size_t size = ftell(file);
+//     rewind(file);
+
+//     *code = (char*) malloc(size + 1);
+//     fread(*code, 1, size, file);
+//     (*code)[size] = '\0';
+    
+//     fclose(file);
+// }
+
+shader_status_t _shader_compile(uint32_t *id, const uint32_t type, char *code) {
+    if (!GAME_ASSERT(id != NULL)) {
+        return SHADER_STATUS_CREATION_FAILED;
+    }
+    if (!GAME_ASSERT(code != NULL)) {
+        return SHADER_STATUS_CREATION_FAILED;
+    }
+
+    *id = glCreateShader(type);
+    if (*id == 0) {
+        return SHADER_STATUS_CREATION_FAILED;
+    }
+
+    const char *source = code;
+    glShaderSource(*id, 1, (const char**) &source, NULL);
+    
     glCompileShader(*id);
 
-    free(code);
- 
     int32_t params;
     glGetShaderiv(*id, GL_COMPILE_STATUS, &params);
     if (params == 0) {
-        char log[512];
-        glGetShaderInfoLog(*id, 512, NULL, log);
-        printf("SHADER_COMPILE_ERROR: %s\n", log);
-        return;
+        // print err in debug
+
+        glDeleteShader(*id);
+        *id = 0;
+
+        return SHADER_STATUS_COMPILATION_FAILED;
     }
+
+    return SHADER_STATUS_SUCCESS;
 }
 
-void shader_init(shader_t *shader, char *vertpath, char *fragpath) {
-    char *vertcode, *fragcode;
-    _shader_read(&vertcode, vertpath);
-    _shader_read(&fragcode, fragpath);
+shader_status_t _shader_link(const uint32_t program) {
+    if (!GAME_ASSERT(program != 0)) {
+        return SHADER_STATUS_LINK_FAILED;
+    }
 
-    _shader_compile(&shader->ids[0], GL_VERTEX_SHADER, vertcode);
-    _shader_compile(&shader->ids[1], GL_FRAGMENT_SHADER, fragcode);
+    glLinkProgram(program);
+
+    int32_t params;
+    glGetProgramiv(program, GL_LINK_STATUS, &params);
+    if (params == 0) {
+        // print err in debug
+        return SHADER_STATUS_LINK_FAILED;
+    }
+
+    return SHADER_STATUS_SUCCESS;
+}
+
+shader_status_t shader_init(shader_t *shader, const char *paths[2]) {
+    if (!GAME_ASSERT(shader != NULL)) {
+        return SHADER_STATUS_INITIALIZATION_FAILED;
+    }
+    if (!GAME_ASSERT(paths != NULL) || !GAME_ASSERT(paths[0] != NULL) || !GAME_ASSERT(paths[1] != NULL)) {
+        return SHADER_STATUS_INITIALIZATION_FAILED;
+    }
+
+    char codes[2][SHADER_MAX_SIZE];
+
+    if (_shader_read(codes[0], paths[0]) != SHADER_STATUS_SUCCESS) {
+        return SHADER_STATUS_INITIALIZATION_FAILED;
+    }
+    if (_shader_read(codes[1], paths[1]) != SHADER_STATUS_SUCCESS) {
+        return SHADER_STATUS_INITIALIZATION_FAILED;
+    }
+
+    shader_status_t vscs = _shader_compile(&shader->ids[0], GL_VERTEX_SHADER, codes[0]);
+    if (vscs != SHADER_STATUS_SUCCESS) {
+        return vscs;
+    }
+    shader_status_t fscs = _shader_compile(&shader->ids[1], GL_FRAGMENT_SHADER, codes[1]);
+    if (fscs != SHADER_STATUS_SUCCESS) {
+        return fscs;
+    }
 
     shader->program = glCreateProgram();
+    if (shader->program == 0) {
+        return SHADER_STATUS_CREATION_FAILED;
+    }
 
     glAttachShader(shader->program, shader->ids[0]);
     glAttachShader(shader->program, shader->ids[1]);
 
-    glLinkProgram(shader->program);
+    return _shader_link(shader->program);
 }
+
+// void shader_init(shader_t *shader, char *vertpath, char *fragpath) {
+//     char *vertcode, *fragcode;
+//     _shader_read(&vertcode, vertpath);
+//     _shader_read(&fragcode, fragpath);
+
+//     _shader_compile(&shader->ids[0], GL_VERTEX_SHADER, vertcode);
+//     _shader_compile(&shader->ids[1], GL_FRAGMENT_SHADER, fragcode);
+
+//     shader->program = glCreateProgram();
+
+//     glAttachShader(shader->program, shader->ids[0]);
+//     glAttachShader(shader->program, shader->ids[1]);
+
+//     glLinkProgram(shader->program);
+// }
 
 void shader_use(shader_t *shader) {
     glUseProgram(shader->program);
@@ -1666,10 +1786,20 @@ void game_init(void) {
 
     // RESOURCES
     context.res.shaders = mem_arena_alloc(&context.arena, GAME_RESOURCES_SHADER_ARRAY_SIZE * sizeof(shader_t));
-    shader_init(&context.res.shaders[0], "res/shader/sprite.vs", "res/shader/sprite.fs");
-    shader_init(&context.res.shaders[1], "res/shader/text.vs", "res/shader/text.fs");
-    shader_init(&context.res.shaders[2], "res/shader/crt.vs", "res/shader/crt.fs");
-    // shader_init(&context.res.shaders[3], "res/shader/glitch.vs", "res/shader/glitch.fs");
+    if (!GAME_ASSERT(context.res.shaders != NULL)) {/*do something*/}
+
+    if (shader_init(&context.res.shaders[0], (const char*[]) {"res/shader/sprite.vs", "res/shader/sprite.fs"}) != SHADER_STATUS_SUCCESS) {
+        // do something as well
+    }
+    if (shader_init(&context.res.shaders[1], (const char*[]) {"res/shader/text.vs", "res/shader/text.fs"}) != SHADER_STATUS_SUCCESS) {
+        // do something as well
+    }
+    if (shader_init(&context.res.shaders[2], (const char*[]) {"res/shader/crt.vs", "res/shader/crt.fs"}) != SHADER_STATUS_SUCCESS) {
+        // do something as well
+    }
+    // if (shader_init(&context.res.shaders[3], (const char*[]) {"res/shader/glitch.vs", "res/shader/glitch.fs"}) != SHADER_STATUS_SUCCESS) {
+    //     // do something as well
+    // }
 
     // TODO read it auto, and search it by name (only in init)
     context.res.textures = mem_arena_alloc(&context.arena, GAME_RESOURCES_TEXTURE_ARRAY_SIZE * sizeof(texture_t));
