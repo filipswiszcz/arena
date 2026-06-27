@@ -22,7 +22,7 @@
 #define WINDOW_HEIGHT 600
 #define WINDOW_NAME "BattleArena 2D (Build v0.0.27)"
 
-#define ASSERT(_e, ...) if (!(_e)) {fprintf(stderr, __VA_ARGS__); exit(1);}
+#define ASSERT(_e, ...) if (!(_e)) {fprintf(stderr, __VA_ARGS__); exit(1);} // del later
 
 #define GAME_LOG(msg, ...) ((void) 0)
 #define GAME_ASSERT(_e) ((_e) ? 1 : (GAME_LOG("%s,%d: Assertion '%s' failed\n", __FILE__, __LINE__, #_e), 0))
@@ -82,21 +82,6 @@ shader_status_t _shader_read(char *buffer, const char *path) {
 
     return SHADER_STATUS_SUCCESS;
 }
-
-// void _shader_read(char **code, char *path) {
-//     FILE *file = fopen(path, "rb");
-//     ASSERT(file != NULL, "FILE_READ_ERROR: %s\n", path);
-
-//     fseek(file, 0, SEEK_END);
-//     size_t size = ftell(file);
-//     rewind(file);
-
-//     *code = (char*) malloc(size + 1);
-//     fread(*code, 1, size, file);
-//     (*code)[size] = '\0';
-    
-//     fclose(file);
-// }
 
 shader_status_t _shader_compile(uint32_t *id, const uint32_t type, char *code) {
     if (!GAME_ASSERT(id != NULL)) {
@@ -184,53 +169,50 @@ shader_status_t shader_init(shader_t *shader, const char *paths[2]) {
     return _shader_link(shader->program);
 }
 
-// void shader_init(shader_t *shader, char *vertpath, char *fragpath) {
-//     char *vertcode, *fragcode;
-//     _shader_read(&vertcode, vertpath);
-//     _shader_read(&fragcode, fragpath);
-
-//     _shader_compile(&shader->ids[0], GL_VERTEX_SHADER, vertcode);
-//     _shader_compile(&shader->ids[1], GL_FRAGMENT_SHADER, fragcode);
-
-//     shader->program = glCreateProgram();
-
-//     glAttachShader(shader->program, shader->ids[0]);
-//     glAttachShader(shader->program, shader->ids[1]);
-
-//     glLinkProgram(shader->program);
-// }
-
-void shader_use(shader_t *shader) {
+void shader_use(const shader_t *shader) {
+    if (!GAME_ASSERT(shader != NULL)) return;
     glUseProgram(shader->program);
 }
 
 void shader_destroy(shader_t *shader) {
+    if (!GAME_ASSERT(shader != NULL)) return;
+
     glDeleteShader(shader->ids[0]);
     glDeleteShader(shader->ids[1]);
     glDeleteProgram(shader->program);
+
+    shader->ids[0] = 0;
+    shader->ids[1] = 0;
+    shader->program = 0;
 }
 
-void shader_set_int(shader_t *shader, char *name, int val) {
-    glUniform1i(glGetUniformLocation(shader->program, name), val);
+void shader_set_int(const shader_t *shader, const char *name, const int val) {
+    if (!GAME_ASSERT(shader != NULL) || !GAME_ASSERT(name != NULL)) return;
+    glUniform1i(glGetUniformLocation(shader->program, (const char*) name), val);
 }
 
-void shader_set_uint(shader_t *shader, char *name, unsigned int val) {
+void shader_set_uint(const shader_t *shader, const char *name, const unsigned int val) {
+    if (!GAME_ASSERT(shader != NULL) || !GAME_ASSERT(name != NULL)) return;
     glUniform1ui(glGetUniformLocation(shader->program, name), val);
 }
 
-void shader_set_float(shader_t *shader, char *name, float val) {
+void shader_set_float(const shader_t *shader, const char *name, const float val) {
+    if (!GAME_ASSERT(shader != NULL) || !GAME_ASSERT(name != NULL)) return;
     glUniform1f(glGetUniformLocation(shader->program, name), val);
 }
 
-void shader_set_vec2(shader_t *shader, char *name, vec2_t vec) {
+void shader_set_vec2(const shader_t *shader, const char *name, const vec2_t vec) {
+    if (!GAME_ASSERT(shader != NULL) || !GAME_ASSERT(name != NULL)) return;
     glUniform2f(glGetUniformLocation(shader->program, name), vec.x, vec.y);
 }
 
-void shader_set_vec3(shader_t *shader, char *name, vec3_t vec) {
+void shader_set_vec3(const shader_t *shader, const char *name, const vec3_t vec) {
+    if (!GAME_ASSERT(shader != NULL) || !GAME_ASSERT(name != NULL)) return;
     glUniform3f(glGetUniformLocation(shader->program, name), vec.x, vec.y, vec.z);
 }
 
-void shader_set_mat4(shader_t *shader, char *name, mat4_t mat) {
+void shader_set_mat4(const shader_t *shader, const char *name, const mat4_t mat) {
+    if (!GAME_ASSERT(shader != NULL) || !GAME_ASSERT(name != NULL)) return;
     glUniformMatrix4fv(glGetUniformLocation(shader->program, name), 1, GL_FALSE, &mat.m[0][0]);
 }
 
