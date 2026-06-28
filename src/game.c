@@ -37,7 +37,8 @@ typedef enum {
     SHADER_STATUS_COMPILATION_FAILED,
     SHADER_STATUS_LINK_FAILED,
     SHADER_STATUS_CREATION_FAILED,
-    SHADER_STATUS_INITIALIZATION_FAILED
+    SHADER_STATUS_INITIALIZATION_FAILED,
+    SHADER_STATUS_INVALID_PARAMETER
 } shader_status_t;
 
 typedef struct {
@@ -169,13 +170,18 @@ shader_status_t shader_init(shader_t *shader, const char *paths[2]) {
     return _shader_link(shader->program);
 }
 
-void shader_use(const shader_t *shader) {
-    if (!GAME_ASSERT(shader != NULL)) return;
+shader_status_t shader_use(const shader_t *shader) {
+    if (!GAME_ASSERT(shader != NULL)) {
+        return SHADER_STATUS_INVALID_PARAMETER;
+    }
     glUseProgram(shader->program);
+    return SHADER_STATUS_SUCCESS;
 }
 
-void shader_destroy(shader_t *shader) {
-    if (!GAME_ASSERT(shader != NULL)) return;
+shader_status_t shader_destroy(shader_t *shader) {
+    if (!GAME_ASSERT(shader != NULL)) {
+        return SHADER_STATUS_INVALID_PARAMETER;
+    }
 
     glDeleteShader(shader->ids[0]);
     glDeleteShader(shader->ids[1]);
@@ -184,36 +190,56 @@ void shader_destroy(shader_t *shader) {
     shader->ids[0] = 0;
     shader->ids[1] = 0;
     shader->program = 0;
+
+    return SHADER_STATUS_SUCCESS;
 }
 
-void shader_set_int(const shader_t *shader, const char *name, const int val) {
-    if (!GAME_ASSERT(shader != NULL) || !GAME_ASSERT(name != NULL)) return;
+shader_status_t shader_set_int(const shader_t *shader, const char *name, const int32_t val) {
+    if (!GAME_ASSERT(shader != NULL) || !GAME_ASSERT(name != NULL)) {
+        return SHADER_STATUS_INVALID_PARAMETER;
+    }
     glUniform1i(glGetUniformLocation(shader->program, (const char*) name), val);
+    return SHADER_STATUS_SUCCESS;
 }
 
-void shader_set_uint(const shader_t *shader, const char *name, const unsigned int val) {
-    if (!GAME_ASSERT(shader != NULL) || !GAME_ASSERT(name != NULL)) return;
+shader_status_t shader_set_uint(const shader_t *shader, const char *name, const uint32_t val) {
+    if (!GAME_ASSERT(shader != NULL) || !GAME_ASSERT(name != NULL)) {
+        return SHADER_STATUS_INVALID_PARAMETER;
+    }
     glUniform1ui(glGetUniformLocation(shader->program, name), val);
+    return SHADER_STATUS_SUCCESS;
 }
 
-void shader_set_float(const shader_t *shader, const char *name, const float val) {
-    if (!GAME_ASSERT(shader != NULL) || !GAME_ASSERT(name != NULL)) return;
+shader_status_t shader_set_float(const shader_t *shader, const char *name, const float val) {
+    if (!GAME_ASSERT(shader != NULL) || !GAME_ASSERT(name != NULL)) {
+        return SHADER_STATUS_INVALID_PARAMETER;
+    }
     glUniform1f(glGetUniformLocation(shader->program, name), val);
+    return SHADER_STATUS_SUCCESS;
 }
 
-void shader_set_vec2(const shader_t *shader, const char *name, const vec2_t vec) {
-    if (!GAME_ASSERT(shader != NULL) || !GAME_ASSERT(name != NULL)) return;
+shader_status_t shader_set_vec2(const shader_t *shader, const char *name, const vec2_t vec) {
+    if (!GAME_ASSERT(shader != NULL) || !GAME_ASSERT(name != NULL)) {
+        return SHADER_STATUS_INVALID_PARAMETER;
+    }
     glUniform2f(glGetUniformLocation(shader->program, name), vec.x, vec.y);
+    return SHADER_STATUS_SUCCESS;
 }
 
-void shader_set_vec3(const shader_t *shader, const char *name, const vec3_t vec) {
-    if (!GAME_ASSERT(shader != NULL) || !GAME_ASSERT(name != NULL)) return;
+shader_status_t shader_set_vec3(const shader_t *shader, const char *name, const vec3_t vec) {
+    if (!GAME_ASSERT(shader != NULL) || !GAME_ASSERT(name != NULL)) {
+        return SHADER_STATUS_INVALID_PARAMETER;
+    }
     glUniform3f(glGetUniformLocation(shader->program, name), vec.x, vec.y, vec.z);
+    return SHADER_STATUS_SUCCESS;
 }
 
-void shader_set_mat4(const shader_t *shader, const char *name, const mat4_t mat) {
-    if (!GAME_ASSERT(shader != NULL) || !GAME_ASSERT(name != NULL)) return;
+shader_status_t shader_set_mat4(const shader_t *shader, const char *name, const mat4_t mat) {
+    if (!GAME_ASSERT(shader != NULL) || !GAME_ASSERT(name != NULL)) {
+        return SHADER_STATUS_INVALID_PARAMETER;
+    }
     glUniformMatrix4fv(glGetUniformLocation(shader->program, name), 1, GL_FALSE, &mat.m[0][0]);
+    return SHADER_STATUS_SUCCESS;
 }
 
 // TEXTURE
