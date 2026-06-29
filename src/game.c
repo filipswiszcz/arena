@@ -954,7 +954,9 @@ void _renderer_postprocess_draw(renderer_t *renderer) {
             shader_set_int(renderer->postprocessing.shaders[i], "u_Texture", 0);
             shader_set_uint(renderer->postprocessing.shaders[i], "u_Lines", WINDOW_HEIGHT);
             shader_set_float(renderer->postprocessing.shaders[i], "u_Bleed", 0.001f);
-            shader_set_float(renderer->postprocessing.shaders[i], "u_Vignette", 0.2f);
+            shader_set_float(renderer->postprocessing.shaders[i], "u_Vignette", 0.4f);
+            shader_set_float(renderer->postprocessing.shaders[i], "u_Grain", 0.16f);
+            shader_set_float(renderer->postprocessing.shaders[i], "u_Time", (float) renderer->time);
         } else if (i == 1) { // glitch'
             // shader_use(renderer->postprocessing.shaders[i]);
             // shader_set_float(renderer->shader, "u_Time", 1.0f);
