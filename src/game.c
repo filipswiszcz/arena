@@ -20,7 +20,7 @@
 
 #define WINDOW_WIDTH 800
 #define WINDOW_HEIGHT 600
-#define WINDOW_NAME "BattleArena 2D (Build v0.0.27)"
+#define WINDOW_NAME "BattleArena 2D (Build v0.1.0)"
 
 #define ASSERT(_e, ...) if (!(_e)) {fprintf(stderr, __VA_ARGS__); exit(1);} // del later
 
@@ -244,6 +244,10 @@ shader_status_t shader_set_mat4(const shader_t *shader, const char *name, const 
 
 // TEXTURE
 
+typedef enum {
+    TEXTURE_STATUS_SUCCESS = 0
+} texture_status_t;
+
 typedef struct {
     uint32_t id;
     int32_t width, height;
@@ -378,10 +382,10 @@ static char GLYPHS[128][FONT_WIDTH][FONT_HEIGHT] = {
     ['G'] = {
         {0, 1, 1, 1, 1},
         {1, 0, 0, 0, 0},
-        {1, 0, 0, 0, 0},
         {1, 0, 1, 1, 1},
         {1, 0, 0, 0, 1},
-        {1, 1, 1, 1, 0},
+        {1, 0, 0, 0, 1},
+        {0, 1, 1, 1, 0},
     },
     // ['H'] = {
     //     {1, 0, 0, 0, 0},
@@ -424,12 +428,12 @@ static char GLYPHS[128][FONT_WIDTH][FONT_HEIGHT] = {
         {1, 1, 1, 1, 0},
     },
     ['M'] = {
+        {1, 0, 0, 0, 1},
         {1, 1, 0, 1, 1},
         {1, 0, 1, 0, 1},
-        {1, 0, 1, 0, 1},
-        {1, 0, 1, 0, 1},
-        {1, 0, 1, 0, 1},
-        {1, 0, 1, 0, 1},
+        {1, 0, 0, 0, 1},
+        {1, 0, 0, 0, 1},
+        {1, 0, 0, 0, 1},
     },
     ['N'] = {
         {1, 0, 0, 1, 0},
@@ -493,15 +497,15 @@ static char GLYPHS[128][FONT_WIDTH][FONT_HEIGHT] = {
         {1, 0, 0, 1, 0},
         {1, 0, 0, 1, 0},
         {1, 0, 0, 1, 0},
-        {0, 1, 1, 1, 0},
+        {0, 1, 1, 0, 0},
     },
     ['V'] = {
-        {1, 0, 0, 1, 0},
-        {1, 0, 0, 1, 0},
-        {1, 0, 0, 1, 0},
-        {1, 0, 0, 1, 0},
-        {1, 0, 0, 1, 0},
-        {0, 1, 1, 0, 0},
+        {1, 0, 0, 0, 1},
+        {1, 0, 0, 0, 1},
+        {1, 0, 0, 0, 1},
+        {0, 1, 0, 1, 0},
+        {0, 1, 0, 1, 0},
+        {0, 0, 1, 0, 0},
     },
     ['W'] = {
         {1, 0, 0, 0, 1},
@@ -946,14 +950,14 @@ void _renderer_postprocess_draw(renderer_t *renderer) {
 
         glClear(GL_COLOR_BUFFER_BIT);
 
-        // shader_use(renderer->postprocessing.shaders[i]);
+        shader_use(renderer->postprocessing.shaders[i]);
 
         // here set uniforms for specific shader
         if (i == 0) { // crt
-            shader_use(renderer->postprocessing.shaders[i]);
+            // shader_use(renderer->postprocessing.shaders[i]);
             shader_set_int(renderer->postprocessing.shaders[i], "u_Texture", 0);
             shader_set_uint(renderer->postprocessing.shaders[i], "u_Lines", WINDOW_HEIGHT);
-            shader_set_float(renderer->postprocessing.shaders[i], "u_Bleed", 0.001f);
+            shader_set_float(renderer->postprocessing.shaders[i], "u_Bleed", 0.0016f);
             shader_set_float(renderer->postprocessing.shaders[i], "u_Vignette", 0.4f);
             shader_set_float(renderer->postprocessing.shaders[i], "u_Grain", 0.16f);
             shader_set_float(renderer->postprocessing.shaders[i], "u_Time", (float) renderer->time);
@@ -1142,6 +1146,7 @@ typedef struct {
     ml_trajectory_t traject;
 
     uint16_t cooldowns[3];
+    uint16_t stats[2]; // wohoooo
 
     uint8_t alive, grounded;
     uint8_t jumped, crouched, dashed;
@@ -1488,6 +1493,8 @@ void game_actor_colls_handle(actor_t *actor, collider_t **colls) {
     }
 }
 
+void game_res_init(void) {} // load shaders and textures
+
 void game_ml_init(void) {
     
     float *memregs[5] = {
@@ -1665,7 +1672,7 @@ void _game_keyboard_callback(GLFWwindow *window, int32_t key, int32_t scan, int3
     }
 }
 
-void _game_keyboard_handle(void) { // it has to rewritten as well (try to handle keys only here, without logic) (callbacks? events?)
+void game_keyboard_handle(void) { // it has to rewritten as well (try to handle keys only here, without logic) (callbacks? events?)
     if (context.game.state == GAME_STATE_LOAD) return;
 
     // KEY Q (quit)
@@ -1681,6 +1688,12 @@ void _game_keyboard_handle(void) { // it has to rewritten as well (try to handle
     // KEY R (resume)
     if (context.sys.keys[GLFW_KEY_R]) {
         if (context.game.state != GAME_STATE_PLAY) context.game.state = GAME_STATE_PLAY;
+    }
+
+    // KEY T (control)
+    if (context.sys.keys[GLFW_KEY_T]) {
+        if (context.game.controller == GAME_CONTROLLER_AUTO) context.game.controller = GAME_CONTROLLER_MANUAL;
+        else context.game.controller = GAME_CONTROLLER_AUTO;
     }
 
     // KEY ESC (reset)
@@ -1732,16 +1745,14 @@ void _game_keyboard_handle(void) { // it has to rewritten as well (try to handle
         context.sys.keys[GLFW_KEY_LEFT_SHIFT] = 2; dash = 1;
     }
 
-    // it has to change mode from playing to simulating (because game_actor_move fires two times for player (only))
-
     if (context.game.player.alive) {
         game_actor_move(&context.game.player, xacc, jump, crouch, dash);
 
         collider_t *colls[] = {&context.game.level.ground.coll, &context.game.enemy.coll};
         game_actor_colls_handle(&context.game.player, colls);
 
-        // KEY F
-        if (context.sys.keys[GLFW_KEY_F]) {
+        // KEY SPACE
+        if (context.sys.keys[GLFW_KEY_SPACE]) {
             game_actor_shoot(&context.game.player);
         }
     }
@@ -1934,7 +1945,7 @@ void game_update(void) {
         // loader
         static double timer = 0.0;
         if (context.game.state == GAME_STATE_LOAD) {
-            if ((timer += context.clock.dt) >= 2.0) context.game.state = GAME_STATE_PAUSE;
+            if ((timer += context.clock.dt) >= 1.0) context.game.state = GAME_STATE_PAUSE;
         }
 
         // framerate
@@ -1958,7 +1969,7 @@ void game_update(void) {
             // TODO save previous actors states
 
             // input
-            _game_keyboard_handle();
+            game_keyboard_handle();
 
             if (context.game.state == GAME_STATE_PLAY) {
 

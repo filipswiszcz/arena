@@ -51,4 +51,5 @@ cd arena
 | `S` | Crouch
 | `A`/`D` | Move left/right
 | `Left arrow`/`Right arrow` | Face left/right
+| `Shift` | Dash
 | `SPACE` | Shoot
