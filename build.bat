@@ -14,14 +14,17 @@ goto eof
 
 :debug
 set "flags=/Zi /Od /MDd /DDEBUG /W4"
+set "lflags=/SUBSYSTEM:CONSOLE"
 goto compile
 
 :dev
 set "flags=/Zi /Od /MDd /W4"
+set "lflags=/SUBSYSTEM:CONSOLE"
 goto compile
 
 :release
 set "flags=/O2 /MD /W4"
+set "lflags=/SUBSYSTEM:WINDOWS /ENTRY:mainCRTStartup"
 goto compile
 
 :compile
@@ -36,6 +39,7 @@ cl.exe /nologo /std:c11 %flags% ^
     /Fdbuild\ ^
     /Febuild\game.exe ^
     /link ^
+    %lflags% ^
     /LIBPATH:"%vcpkg%\lib" ^
     glfw3dll.lib glew32.lib opengl32.lib gdi32.lib user32.lib shell32.lib
 
