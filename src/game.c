@@ -24,8 +24,16 @@
 
 #define ASSERT(_e, ...) if (!(_e)) {fprintf(stderr, __VA_ARGS__); exit(1);} // del later
 
-#define GAME_LOG(msg, ...) ((void) 0)
-#define GAME_ASSERT(_e) ((_e) ? 1 : (GAME_LOG("%s,%d: Assertion '%s' failed\n", __FILE__, __LINE__, #_e), 0))
+#define GAME_LOG(msg, ...) ((void) 0) // mv to LOG
+#define GAME_ASSERT(_e) ((_e) ? 1 : (GAME_LOG("%s,%d: Assertion '%s' failed\n", __FILE__, __LINE__, #_e), 0)) // mv to ASSERT
+
+// UTIL
+
+static inline float random(void) {
+    static uint8_t init = 0;
+    if (!init) {srand((unsigned) time(NULL)); init = 1;}
+    return (float) rand() / ((float) RAND_MAX + 1.0f);
+}
 
 // SHADER
 
@@ -702,6 +710,10 @@ typedef struct command {
 
     vec3_t color;
 
+    // temp
+    float dissolve;
+    // temp
+
     uint8_t zorder;
     uint8_t flip;
 } command_t;
@@ -862,7 +874,7 @@ void renderer_frame_clear(renderer_t *renderer) { // i have to find out, if it c
     renderer->frame.counter = 0;
 }
 
-void _renderer_sprite_draw(renderer_t *renderer, texture_t *texture, vec4_t uv, vec4_t trans, float rot, vec3_t color, uint8_t flip) {
+void _renderer_sprite_draw(renderer_t *renderer, texture_t *texture, vec4_t uv, vec4_t trans, float rot, vec3_t color, float dissolve, uint8_t flip) {
     mat4_t model = mat4(1.0f);
     model = mat4_trans(model, vec3(trans.x, trans.y, 0.0f));
     model = mat4_trans(model, vec3(trans.z * 0.5f, trans.w * 0.5f, 0.0f)); // what does it do? cant remember
@@ -881,6 +893,7 @@ void _renderer_sprite_draw(renderer_t *renderer, texture_t *texture, vec4_t uv, 
 
     shader_set_vec3(renderer->shader, "u_Color", color);
 
+    shader_set_float(renderer->shader, "u_Dissolve", dissolve);
     shader_set_float(renderer->shader, "u_GlitchTime", renderer->time);
     shader_set_float(renderer->shader, "u_GlitchIntensity", 0.1f);
 
@@ -992,6 +1005,7 @@ void renderer_draw(renderer_t *renderer) {
                 vec4(renderer->frame.commands[i].pos.x, renderer->frame.commands[i].pos.y, renderer->frame.commands[i].size.x, renderer->frame.commands[i].size.y),
                 renderer->frame.commands[i].rot,
                 renderer->frame.commands[i].color,
+                renderer->frame.commands[i].dissolve,
                 renderer->frame.commands[i].flip
             );
         } else {
@@ -1040,6 +1054,7 @@ uint8_t GAME_MEMORY[GAME_MEMORY_CAPACITY];
 #define GAME_LEVEL_TEXT_ARRAY_SIZE 2
 #define GAME_LEVEL_BULLET_ARRAY_SIZE 8
 #define GAME_LEVEL_BULLET_SPEED 8
+#define GAME_LEVEL_PARTICLE_ARRAY_SIZE 128
 
 #define GAME_ACTOR_SPRITE_ARRAY_SIZE 8
 #define GAME_ACTOR_SPRITE_SCALE 2
@@ -1148,6 +1163,10 @@ typedef struct {
     uint16_t cooldowns[3];
     uint16_t stats[2]; // wohoooo
 
+    // effects struct
+    float effects[1];
+    // effects
+
     uint8_t alive, grounded;
     uint8_t jumped, crouched, dashed;
     uint8_t flip;
@@ -1172,6 +1191,13 @@ typedef struct {
     uint8_t used;
     uint8_t flip;
 } bullet_t;
+
+typedef struct {
+    vec2_t pos, vel;
+    vec3_t color;
+    float start, end;
+    uint8_t used;
+} particle_t;
 
 static struct {
 
@@ -1216,6 +1242,8 @@ static struct {
             sprite_t *sprites;
 
             bullet_t *bullets;
+            particle_t *particles;
+
             rect_t ground; // arr?
             
             uint16_t turn;
@@ -1243,12 +1271,14 @@ void game_level_reset(void) {
     context.game.player.action = ACTOR_ACTION_IDLE;
     context.game.player.animation.step = ACTOR_ANIMATION_STEP_4;
     context.game.player.animation.tick = 0;
+    context.game.player.effects[0] = 0.0f;
     context.game.player.alive = 1;
     context.game.player.flip = 0;
 
     context.game.enemy.action = ACTOR_ACTION_IDLE;
     context.game.enemy.animation.step = ACTOR_ANIMATION_STEP_4;
     context.game.enemy.animation.tick = 0;
+    context.game.enemy.effects[0] = 0.0f;
     context.game.enemy.alive = 1;
     context.game.enemy.flip = 1;
 
@@ -1256,6 +1286,33 @@ void game_level_reset(void) {
     game_actor_trans(&context.game.enemy, vec2(((float) WINDOW_WIDTH - 50.0f - (context.game.enemy.sprites[context.game.enemy.action].size.x) - (ml_random() * 200.0f)), 50.0f), 0.0f, vec2(1.0f, 1.0f));
 
     for (uint32_t i = 0; i < GAME_LEVEL_BULLET_ARRAY_SIZE; i++) context.game.level.bullets[i].used = 0;
+}
+
+void game_particle_spawn(vec2_t pos, float direct, vec3_t color) {
+    for (uint32_t i = 0; i < 32; i++) {
+        for (uint32_t j = 0; j < GAME_LEVEL_PARTICLE_ARRAY_SIZE; j++) {
+            if (context.game.level.particles[j].used) continue;
+
+            const float drag = 0.98f;
+
+            float angle = (random() * 30.0f - 15.0f) * (PI / 180.0f);
+            float speed = random() * 256.0f;
+
+            float vx = (cosf(angle) * speed * direct) * drag;
+            float vy = (sinf(angle) * speed) * drag;
+
+            context.game.level.particles[j] = (particle_t) {
+                .pos = vec2(pos.x, pos.y + (random() * 4.0f - 2.0f)),
+                .vel = vec2(vx, vy),
+                .color = color,
+                .start = 0.0f,
+                .end = (random() * 0.3f),
+                .used = 1
+            };
+
+            break;
+        }
+    }
 }
 
 void game_bullet_move(bullet_t *bullet) {
@@ -1286,17 +1343,17 @@ void game_bullet_colls_handle(bullet_t *bullet, collider_t **colls) { // it has 
 }
 
 void game_bullet_actor_colls_handle(bullet_t *bullet, actor_t **actors) {
-    vec2_t prevpos = bullet->pos;
-    bullet->pos.x += bullet->rigb.vel.x * GAME_SIMULATION_FIXED_TIMESTEP;
-    bullet->pos.y += bullet->rigb.vel.y * GAME_SIMULATION_FIXED_TIMESTEP;
+    vec2_t origin = bullet->pos;
+    bullet->pos.x += (bullet->rigb.vel.x * GAME_SIMULATION_FIXED_TIMESTEP);
+    bullet->pos.y += (bullet->rigb.vel.y * GAME_SIMULATION_FIXED_TIMESTEP);
 
     bullet->coll.min = vec2(
-        (prevpos.x < bullet->pos.x) ? prevpos.x : bullet->pos.x,
-        (prevpos.y < bullet->pos.y) ? prevpos.y : bullet->pos.y
+        (origin.x < bullet->pos.x) ? origin.x : bullet->pos.x,
+        (origin.y < bullet->pos.y) ? origin.y : bullet->pos.y
     );
     bullet->coll.max = vec2(
-        ((prevpos.x > bullet->pos.x) ? prevpos.x : bullet->pos.x) + (GAME_ACTOR_SPRITE_SCALE * 8.0f),
-        ((prevpos.y > bullet->pos.y) ? prevpos.y : bullet->pos.y) + (GAME_ACTOR_SPRITE_SCALE * 4.0f)
+        ((origin.x > bullet->pos.x) ? origin.x : bullet->pos.x) + (8.0f * GAME_ACTOR_SPRITE_SCALE),
+        ((origin.y > bullet->pos.y) ? origin.y : bullet->pos.y) + (4.0f * GAME_ACTOR_SPRITE_SCALE)
     );
     bullet->coll.mask = GAME_COLL_NONE;
 
@@ -1316,8 +1373,13 @@ void game_bullet_actor_colls_handle(bullet_t *bullet, actor_t **actors) {
             if (bullet->shooter->traject.steps > 0) {
                 bullet->shooter->traject.rewards[bullet->shooter->traject.steps - 1] += 100.0f;
             }
-
             bullet->used = 0;
+
+            game_particle_spawn(
+                vec2((bullet->rigb.vel.x > 0 ? (actors[i]->pos.x + 38.0f) : actors[i]->pos.x), bullet->pos.y),
+                (bullet->rigb.vel.x > 0 ? 1.0f : -1.0f),
+                ((actors[i] == &context.game.player) ? vec3(1.0f, 0.0f, 0.8f) : vec3(0.0f, 1.0f, 1.0f))
+            );
 
             return;
         }
@@ -1846,7 +1908,7 @@ void game_init(void) {
     texture_init(&context.res.textures[16], "res/texture/enemy/cyborg_crouch-2.png");
     texture_init(&context.res.textures[17], "res/texture/enemy/cyborg_dash-comp.png");
     texture_init(&context.res.textures[18], "res/texture/enemy/cyborg_attack.png");
-    texture_init(&context.res.textures[19], "res/texture/enemy/cyborg_death.png");
+    texture_init(&context.res.textures[19], "res/texture/enemy/cyborg_death-comp.png");
 
     // RENDERER
     context.renderer.frame.commands = mem_arena_alloc(&context.arena, RENDERER_COMMAND_ARRAY_SIZE * sizeof(command_t));
@@ -1859,6 +1921,8 @@ void game_init(void) {
     context.game.level.sprites = mem_arena_alloc(&context.arena, GAME_LEVEL_SPRITE_ARRAY_SIZE * sizeof(sprite_t));
     context.game.level.bullets = mem_arena_alloc(&context.arena, GAME_LEVEL_BULLET_ARRAY_SIZE * sizeof(bullet_t));
     for (uint32_t i = 0; i < GAME_LEVEL_BULLET_ARRAY_SIZE; i++) context.game.level.bullets[i] = (bullet_t) {0}; // is there a cooler way to init this?
+    context.game.level.particles = mem_arena_alloc(&context.arena, GAME_LEVEL_PARTICLE_ARRAY_SIZE * sizeof(particle_t));
+    for (uint32_t i = 0; i < GAME_LEVEL_PARTICLE_ARRAY_SIZE; i++) context.game.level.particles[i] = (particle_t) {0};
     context.game.level.turn = 0;
 
     sprite_init(&context.game.level.sprites[0], &context.res.textures[1], vec2(1.0f, 1.0f), vec2(0.0f, 0.0f), vec2(0.0f, 0.0f), vec2(GAME_ACTOR_SPRITE_SCALE * 6.0f, GAME_ACTOR_SPRITE_SCALE * 6.0f), 0.0f, vec3(1.0f, 1.0f, 1.0f), 0, 0); // bullet
@@ -1875,6 +1939,7 @@ void game_init(void) {
     context.game.player.sprites = mem_arena_alloc(&context.arena, GAME_ACTOR_SPRITE_ARRAY_SIZE * sizeof(sprite_t));
     context.game.player.action = ACTOR_ACTION_IDLE;
     context.game.player.animation = (actor_animation_t) {.step = ACTOR_ANIMATION_STEP_4, .tick = 0, .lock = 0};
+    context.game.player.effects[0] = 0.0f;
     context.game.player.alive = 1;
     context.game.player.crouched = 0;
     context.game.player.jumped = 0;
@@ -1899,6 +1964,7 @@ void game_init(void) {
     context.game.enemy.sprites = mem_arena_alloc(&context.arena, GAME_ACTOR_SPRITE_ARRAY_SIZE * sizeof(sprite_t));
     context.game.enemy.action = ACTOR_ACTION_IDLE;
     context.game.enemy.animation = (actor_animation_t) {.step = ACTOR_ANIMATION_STEP_4, .tick = 0, .lock = 0};
+    context.game.enemy.effects[0] = 0.0f;
     context.game.enemy.alive = 1;
     context.game.enemy.jumped = 0;
     context.game.enemy.crouched = 0;
@@ -1914,7 +1980,7 @@ void game_init(void) {
     sprite_init(&context.game.enemy.sprites[4], &context.res.textures[16], vec2(1.0f, 1.0f), vec2(0.0f, 0.0f), vec2(0.0f, 0.0f), vec2(GAME_ACTOR_SPRITE_SCALE * 18.0f, GAME_ACTOR_SPRITE_SCALE * 27.0f), 0.0f, vec3(1.0f, 1.0f, 1.0f), 0, 0); // crouch
     sprite_init(&context.game.enemy.sprites[5], &context.res.textures[17], vec2(0.25f, 1.0f), vec2(0.0f, 0.0f), vec2(0.0f, 0.0f), vec2(GAME_ACTOR_SPRITE_SCALE * 30.0f, GAME_ACTOR_SPRITE_SCALE * 35.0f), 0.0f, vec3(1.0f, 1.0f, 1.0f), 0, 0); // dash
     // sprite_init(&context.game.enemy.sprites[6], &context.res.textures[18], vec2(0.0f, 0.0f), vec2(48.0f * GAME_ACTOR_SPRITE_SCALE, 48.0f * GAME_ACTOR_SPRITE_SCALE), 0.0f, vec2(0.167f, 1.0f), vec2(0.167f, 0.0f), vec3(1.0f, 1.0f, 1.0f), 0); // attack
-    sprite_init(&context.game.enemy.sprites[7], &context.res.textures[19], vec2(0.167f, 1.0f), vec2(0.501f, 0.0f), vec2(0.0f, 0.0f), vec2(GAME_ACTOR_SPRITE_SCALE * 48.0f, GAME_ACTOR_SPRITE_SCALE * 48.0f), 0.0f, vec3(1.0f, 1.0f, 1.0f), 0, 0); // death
+    sprite_init(&context.game.enemy.sprites[7], &context.res.textures[19], vec2(0.167f, 1.0f), vec2(0.501f, 0.0f), vec2(0.0f, 0.0f), vec2(GAME_ACTOR_SPRITE_SCALE * 22.0f, GAME_ACTOR_SPRITE_SCALE * 35.0f), 0.0f, vec3(1.0f, 1.0f, 1.0f), 0, 0); // death
 
     // ML
     game_ml_init();
@@ -1990,6 +2056,22 @@ void game_update(void) {
                         }
                         game_bullet_actor_colls_handle(&context.game.level.bullets[i], actors); // merge into one func
                     }
+                }
+
+                for (uint32_t i = 0; i < GAME_LEVEL_PARTICLE_ARRAY_SIZE; i++) {
+                    if (context.game.level.particles[i].used) {
+                        context.game.level.particles[i].pos.x += (context.game.level.particles[i].vel.x * GAME_SIMULATION_FIXED_TIMESTEP);
+                        context.game.level.particles[i].pos.y += (context.game.level.particles[i].vel.y * GAME_SIMULATION_FIXED_TIMESTEP);
+                        context.game.level.particles[i].start += GAME_SIMULATION_FIXED_TIMESTEP;
+                        if (context.game.level.particles[i].start >= context.game.level.particles[i].end) context.game.level.particles[i].used = 0;
+                    }
+                }
+
+                if (!context.game.player.alive && context.game.player.effects[0] < 1.0f) {
+                    context.game.player.effects[0] += ((float) context.clock.dt * 2.0f);
+                }
+                if (!context.game.enemy.alive && context.game.enemy.effects[0] < 1.0f) {
+                    context.game.enemy.effects[0] += ((float) context.clock.dt * 2.0f);
                 }
 
                 // ml
@@ -2105,6 +2187,7 @@ void game_update(void) {
                     .size = vec2(800.0f, 600.0f),
                     .rot = 0.0f,
                     .color = vec3(1.0f, 1.0f, 1.0f),
+                    .dissolve = 0.0f,
                     .zorder = 0,
                     .flip = 0
                 });
@@ -2130,6 +2213,7 @@ void game_update(void) {
                 .size = context.game.level.sprites[2].size,
                 .rot = context.game.level.sprites[2].rot,
                 .color = context.game.level.sprites[2].color,
+                .dissolve = 0.0f,
                 .zorder = 2,
                 .flip = 0
             });
@@ -2147,8 +2231,29 @@ void game_update(void) {
                         .size = context.game.level.sprites[0].size,
                         .rot = context.game.level.sprites[0].rot,
                         .color = context.game.level.sprites[0].color,
+                        .dissolve = 0.0f,
                         .zorder = 3,
                         .flip = context.game.level.bullets[i].shooter->flip
+                    });
+                }
+            }
+
+            // particle
+            for (uint32_t i = 0; i < GAME_LEVEL_PARTICLE_ARRAY_SIZE; i++) {
+                if (context.game.level.particles[i].used) {
+                    renderer_frame_command_push(&context.renderer, (command_t) {
+                        .type = COMMAND_TYPE_SPRITE,
+                        .data.sprite = {
+                            .texture = context.game.level.sprites[0].texture,
+                            .uv = {.scale = vec2(1.0f, 1.0f), .offset = vec2(0.0f, 0.0f)}
+                        },
+                        .pos = context.game.level.particles[i].pos,
+                        .size = vec2(4.0f, 4.0f),
+                        .rot = 0.0f,
+                        .color = context.game.level.particles[i].color,
+                        .zorder = 3,
+                        .flip = 0,
+                        .dissolve = 0.0f
                     });
                 }
             }
@@ -2170,6 +2275,7 @@ void game_update(void) {
                     .size = context.game.player.sprites[action].size,
                     .rot = context.game.player.sprites[action].rot,
                     .color = context.game.player.sprites[action].color,
+                    .dissolve = context.game.player.alive ? 0.0f : context.game.player.effects[0],
                     .zorder = 2,
                     .flip = context.game.player.flip
                 });
@@ -2185,6 +2291,7 @@ void game_update(void) {
                         .size = context.game.level.sprites[1].size,
                         .rot = context.game.level.sprites[1].rot,
                         .color = context.game.level.sprites[1].color,
+                        .dissolve = 0.0f,
                         .zorder = 2,
                         .flip = context.game.player.flip
                     });
@@ -2204,10 +2311,11 @@ void game_update(void) {
                         .texture = context.game.enemy.sprites[action].texture,
                         .uv = {.scale = context.game.enemy.sprites[action].uv.scale, .offset = context.game.enemy.sprites[action].uv.offset}
                     },
-                    .pos = vec2_add(context.game.enemy.pos, context.game.enemy.sprites[action].pos),
+                    .pos = context.game.enemy.pos,
                     .size = context.game.enemy.sprites[action].size,
                     .rot = context.game.enemy.sprites[action].rot,
                     .color = context.game.enemy.sprites[action].color,
+                    .dissolve = context.game.enemy.alive ? 0.0f : context.game.enemy.effects[0],
                     .zorder = 2,
                     .flip = context.game.enemy.flip
                 });
@@ -2223,6 +2331,7 @@ void game_update(void) {
                         .size = context.game.level.sprites[1].size,
                         .rot = context.game.level.sprites[1].rot,
                         .color = context.game.level.sprites[1].color,
+                        .dissolve = 0.0f,
                         .zorder = 2,
                         .flip = context.game.enemy.flip
                     });

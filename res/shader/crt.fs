@@ -13,8 +13,8 @@ uniform float u_Grain;
 
 uniform float u_Time;
 
-float random(vec2 uv) {
-    return fract(sin(dot(uv, vec2(12.9898, 78.233))) * 43758.5453123);
+float random(vec2 seed) {
+    return fract(sin(dot(seed, vec2(12.9898, 78.233))) * 43758.5453123);
 }
 
 void main() {

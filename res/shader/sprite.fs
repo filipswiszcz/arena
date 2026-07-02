@@ -6,8 +6,10 @@ in vec4 t_Bound;
 out vec4 o_Color;
 
 uniform sampler2D u_Texture;
+
 uniform vec3 u_Color;
 
+uniform float u_Dissolve;
 uniform float u_GlitchTime;
 uniform float u_GlitchIntensity;
 
@@ -35,5 +37,15 @@ void main() {
     vec4 S = texture(u_Texture, c_Uv);
     float B = texture(u_Texture, c_UvB).b;
 
-    o_Color = vec4(vec3(R, S.g, B) * u_Color, S.a);
+    vec4 c_Color = vec4(vec3(R, S.g, B) * u_Color, S.a);
+
+    if (u_Dissolve > 0.0f) {
+        float c_Dissolve = random(c_Uv * 32.0f + vec2(u_GlitchTime));
+        if (c_Dissolve < u_Dissolve) discard;
+        if (c_Dissolve < u_Dissolve + 0.25f) c_Color.rgb = vec3(0.0f, 1.0f, 1.0f);
+    }
+
+    o_Color = c_Color;
+
+    // o_Color = vec4(vec3(R, S.g, B) * u_Color, S.a);
 }
