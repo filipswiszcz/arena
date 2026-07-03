@@ -20,19 +20,42 @@
 
 #define WINDOW_WIDTH 800
 #define WINDOW_HEIGHT 600
-#define WINDOW_NAME "BattleArena 2D (Build v0.1.0)"
+#define WINDOW_NAME "BattleArena 2D (Build v0.1.1)"
 
-#define ASSERT(_e, ...) if (!(_e)) {fprintf(stderr, __VA_ARGS__); exit(1);} // del later
-
-#define GAME_LOG(msg, ...) ((void) 0) // mv to LOG
+#define GAME_LOG(_m, ...) ((void) 0) // mv to LOG
 #define GAME_ASSERT(_e) ((_e) ? 1 : (GAME_LOG("%s,%d: Assertion '%s' failed\n", __FILE__, __LINE__, #_e), 0)) // mv to ASSERT
+
+typedef int8_t i8;
+typedef int16_t i16;
+typedef int32_t i32;
+typedef int64_t i64;
+typedef uint8_t u8;
+typedef uint16_t u16;
+typedef uint32_t u32;
+typedef uint64_t u64;
+typedef float f32;
+typedef double f64;
+
+#ifndef STATIC_ASSERT
+    #if defined(__STDC_VERSION__) && (__STDC_VERSION__ >= 201112L)
+        #define STATIC_ASSERT(_e, _m) _Static_assert(_e, _m)
+    #elif defined(_MSC_VER)
+        #define STATIC_ASSERT(_e, _m) static_assert(_e, _m)
+    #else
+        #define STATIC_ASSERT(_e, _m) \
+            typedef char static_assert_##__LINE__[(_e) ? 1 : -1]
+    #endif
+#endif
+
+STATIC_ASSERT(sizeof(f32) == 4, "Float must be exactly 4 bytes");
+STATIC_ASSERT(sizeof(f64) == 8, "Float must be exactly 8 bytes");
 
 // UTIL
 
-static inline float random(void) {
-    static uint8_t init = 0;
+static inline f32 random(void) {
+    static i8 init = 0;
     if (!init) {srand((unsigned) time(NULL)); init = 1;}
-    return (float) rand() / ((float) RAND_MAX + 1.0f);
+    return (f32) rand() / ((f32) RAND_MAX + 1.0f);
 }
 
 // SHADER
@@ -253,7 +276,8 @@ shader_status_t shader_set_mat4(const shader_t *shader, const char *name, const 
 // TEXTURE
 
 typedef enum {
-    TEXTURE_STATUS_SUCCESS = 0
+    TEXTURE_STATUS_SUCCESS = 0,
+    TEXTURE_STATUS_FILE_NOT_FOUND
 } texture_status_t;
 
 typedef struct {
@@ -276,7 +300,9 @@ void texture_init(texture_t *texture, char *path) {
     
     int32_t channels;
     unsigned char *pixels = stbi_load(path, &texture->width, &texture->height, &channels, 0);
-    ASSERT(pixels, "TEXTURE_READ_ERROR: %s\n", path);
+    if (!GAME_ASSERT(pixels != NULL)) {
+        return TEXTURE_STATUS_FILE_NOT_FOUND;
+    }
 
     switch (channels) {
         case 1: {texture->format = GL_RED; break;}
@@ -1716,10 +1742,13 @@ void game_ml_step(actor_t *actor, actor_t *enemy, ml_trajectory_t *traject, int8
 }
 
 void _game_win32_icon_init(void) {
-    char *path = "res/texture/icon.png";
+    const char *path = "res/texture/icon.png";
     int32_t width, height, channels;
     unsigned char *pixels = stbi_load(path, &width, &height, &channels, 0);
-    ASSERT(pixels, "ICON_READ_ERROR: %s", path);
+    if (!GAME_ASSERT(pixels != NULL)) {
+        // do smth
+    }
+    // ASSERT(pixels, "ICON_READ_ERROR: %s", path);
 
     GLFWimage images[1] = {(GLFWimage) {.width = width, .height = height, .pixels = pixels}};
     glfwSetWindowIcon(context.sys.window, 1, images);
@@ -1823,7 +1852,10 @@ void game_keyboard_handle(void) { // it has to rewritten as well (try to handle 
 void game_init(void) {
 
     // GLFW
-    ASSERT(glfwInit(), "OPENGL_INIT_ERROR\n");
+    if (!GAME_ASSERT(glfwInit())) {
+        // do smth
+    }
+    // ASSERT(glfwInit(), "OPENGL_INIT_ERROR\n");
 
     glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 4);
     glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 1);
@@ -1835,7 +1867,9 @@ void game_init(void) {
     glfwWindowHint(GLFW_RESIZABLE, GL_FALSE);
 
     context.sys.window = glfwCreateWindow(WINDOW_WIDTH, WINDOW_HEIGHT, WINDOW_NAME, NULL, NULL);
-    ASSERT(context.sys.window, "GLFW_WINDOW_CREATE_ERROR\n");
+    if (!GAME_ASSERT(context.sys.window != NULL)) {
+        // do smth
+    }
 
     glfwMakeContextCurrent(context.sys.window);
     glfwSetKeyCallback(context.sys.window, _game_keyboard_callback);
@@ -1847,7 +1881,10 @@ void game_init(void) {
 #ifndef __APPLE__
     glewExperimental = 1; // what?
     int32_t glewerr = glewInit();
-    ASSERT(glewerr == 0 || glewerr == 4, "GLEW_INIT_ERROR\n"); // this needs to be rethinked
+    if (!GAME_ASSERT(glewerr == 0 || glewerr == 4)) {
+        // do smth
+    }
+    // ASSERT(glewerr == 0 || glewerr == 4, "GLEW_INIT_ERROR\n"); // this needs to be rethinked
 #endif
 
     // OPENGL
