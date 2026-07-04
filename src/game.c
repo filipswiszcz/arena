@@ -20,10 +20,10 @@
 
 #define WINDOW_WIDTH 800
 #define WINDOW_HEIGHT 600
-#define WINDOW_NAME "BattleArena 2D (Build v0.1.1)"
+#define WINDOW_NAME "BattleArena 2D (Build v0.1.2)"
 
-#define GAME_LOG(_m, ...) ((void) 0) // mv to LOG
-#define GAME_ASSERT(_e) ((_e) ? 1 : (GAME_LOG("%s,%d: Assertion '%s' failed\n", __FILE__, __LINE__, #_e), 0)) // mv to ASSERT
+#define LOG(_m, ...) ((void) 0)
+#define ASSERT(_e) ((_e) ? 1 : (LOG("%s,%d: Assertion '%s' failed\n", __FILE__, __LINE__, #_e), 0))
 
 typedef int8_t i8;
 typedef int16_t i16;
@@ -73,15 +73,15 @@ typedef enum {
 } shader_status_t;
 
 typedef struct {
-    uint32_t ids[2];
-    uint32_t program;
+    u32 ids[2];
+    u32 program;
 } shader_t;
 
 shader_status_t _shader_read(char *buffer, const char *path) {
-    if (!GAME_ASSERT(buffer != NULL)) {
+    if (!ASSERT(buffer != NULL)) {
         return SHADER_STATUS_INITIALIZATION_FAILED;
     }
-    if (!GAME_ASSERT(path != NULL)) {
+    if (!ASSERT(path != NULL)) {
         return SHADER_STATUS_INITIALIZATION_FAILED;
     }
 
@@ -115,11 +115,11 @@ shader_status_t _shader_read(char *buffer, const char *path) {
     return SHADER_STATUS_SUCCESS;
 }
 
-shader_status_t _shader_compile(uint32_t *id, const uint32_t type, char *code) {
-    if (!GAME_ASSERT(id != NULL)) {
+shader_status_t _shader_compile(u32 *id, const uint32_t type, char *code) {
+    if (!ASSERT(id != NULL)) {
         return SHADER_STATUS_CREATION_FAILED;
     }
-    if (!GAME_ASSERT(code != NULL)) {
+    if (!ASSERT(code != NULL)) {
         return SHADER_STATUS_CREATION_FAILED;
     }
 
@@ -147,14 +147,14 @@ shader_status_t _shader_compile(uint32_t *id, const uint32_t type, char *code) {
     return SHADER_STATUS_SUCCESS;
 }
 
-shader_status_t _shader_link(const uint32_t program) {
-    if (!GAME_ASSERT(program != 0)) {
+shader_status_t _shader_link(const u32 program) {
+    if (!ASSERT(program != 0)) {
         return SHADER_STATUS_LINK_FAILED;
     }
 
     glLinkProgram(program);
 
-    int32_t params;
+    i32 params;
     glGetProgramiv(program, GL_LINK_STATUS, &params);
     if (params == 0) {
         // print err in debug
@@ -165,10 +165,10 @@ shader_status_t _shader_link(const uint32_t program) {
 }
 
 shader_status_t shader_init(shader_t *shader, const char *paths[2]) {
-    if (!GAME_ASSERT(shader != NULL)) {
+    if (!ASSERT(shader != NULL)) {
         return SHADER_STATUS_INITIALIZATION_FAILED;
     }
-    if (!GAME_ASSERT(paths != NULL) || !GAME_ASSERT(paths[0] != NULL) || !GAME_ASSERT(paths[1] != NULL)) {
+    if (!ASSERT(paths != NULL) || !ASSERT(paths[0] != NULL) || !ASSERT(paths[1] != NULL)) {
         return SHADER_STATUS_INITIALIZATION_FAILED;
     }
 
@@ -202,7 +202,7 @@ shader_status_t shader_init(shader_t *shader, const char *paths[2]) {
 }
 
 shader_status_t shader_use(const shader_t *shader) {
-    if (!GAME_ASSERT(shader != NULL)) {
+    if (!ASSERT(shader != NULL)) {
         return SHADER_STATUS_INVALID_PARAMETER;
     }
     glUseProgram(shader->program);
@@ -210,7 +210,7 @@ shader_status_t shader_use(const shader_t *shader) {
 }
 
 shader_status_t shader_destroy(shader_t *shader) {
-    if (!GAME_ASSERT(shader != NULL)) {
+    if (!ASSERT(shader != NULL)) {
         return SHADER_STATUS_INVALID_PARAMETER;
     }
 
@@ -225,24 +225,24 @@ shader_status_t shader_destroy(shader_t *shader) {
     return SHADER_STATUS_SUCCESS;
 }
 
-shader_status_t shader_set_int(const shader_t *shader, const char *name, const int32_t val) {
-    if (!GAME_ASSERT(shader != NULL) || !GAME_ASSERT(name != NULL)) {
+shader_status_t shader_set_int(const shader_t *shader, const char *name, const i32 val) {
+    if (!ASSERT(shader != NULL) || !ASSERT(name != NULL)) {
         return SHADER_STATUS_INVALID_PARAMETER;
     }
     glUniform1i(glGetUniformLocation(shader->program, (const char*) name), val);
     return SHADER_STATUS_SUCCESS;
 }
 
-shader_status_t shader_set_uint(const shader_t *shader, const char *name, const uint32_t val) {
-    if (!GAME_ASSERT(shader != NULL) || !GAME_ASSERT(name != NULL)) {
+shader_status_t shader_set_uint(const shader_t *shader, const char *name, const u32 val) {
+    if (!ASSERT(shader != NULL) || !ASSERT(name != NULL)) {
         return SHADER_STATUS_INVALID_PARAMETER;
     }
     glUniform1ui(glGetUniformLocation(shader->program, name), val);
     return SHADER_STATUS_SUCCESS;
 }
 
-shader_status_t shader_set_float(const shader_t *shader, const char *name, const float val) {
-    if (!GAME_ASSERT(shader != NULL) || !GAME_ASSERT(name != NULL)) {
+shader_status_t shader_set_float(const shader_t *shader, const char *name, const f32 val) {
+    if (!ASSERT(shader != NULL) || !ASSERT(name != NULL)) {
         return SHADER_STATUS_INVALID_PARAMETER;
     }
     glUniform1f(glGetUniformLocation(shader->program, name), val);
@@ -250,7 +250,7 @@ shader_status_t shader_set_float(const shader_t *shader, const char *name, const
 }
 
 shader_status_t shader_set_vec2(const shader_t *shader, const char *name, const vec2_t vec) {
-    if (!GAME_ASSERT(shader != NULL) || !GAME_ASSERT(name != NULL)) {
+    if (!ASSERT(shader != NULL) || !ASSERT(name != NULL)) {
         return SHADER_STATUS_INVALID_PARAMETER;
     }
     glUniform2f(glGetUniformLocation(shader->program, name), vec.x, vec.y);
@@ -258,7 +258,7 @@ shader_status_t shader_set_vec2(const shader_t *shader, const char *name, const 
 }
 
 shader_status_t shader_set_vec3(const shader_t *shader, const char *name, const vec3_t vec) {
-    if (!GAME_ASSERT(shader != NULL) || !GAME_ASSERT(name != NULL)) {
+    if (!ASSERT(shader != NULL) || !ASSERT(name != NULL)) {
         return SHADER_STATUS_INVALID_PARAMETER;
     }
     glUniform3f(glGetUniformLocation(shader->program, name), vec.x, vec.y, vec.z);
@@ -266,7 +266,7 @@ shader_status_t shader_set_vec3(const shader_t *shader, const char *name, const 
 }
 
 shader_status_t shader_set_mat4(const shader_t *shader, const char *name, const mat4_t mat) {
-    if (!GAME_ASSERT(shader != NULL) || !GAME_ASSERT(name != NULL)) {
+    if (!ASSERT(shader != NULL) || !ASSERT(name != NULL)) {
         return SHADER_STATUS_INVALID_PARAMETER;
     }
     glUniformMatrix4fv(glGetUniformLocation(shader->program, name), 1, GL_FALSE, &mat.m[0][0]);
@@ -281,9 +281,9 @@ typedef enum {
 } texture_status_t;
 
 typedef struct {
-    uint32_t id;
-    int32_t width, height;
-    int32_t format;
+    u32 id;
+    i32 width, height;
+    i32 format;
 } texture_t;
 
 void texture_init(texture_t *texture, char *path) {
@@ -298,9 +298,9 @@ void texture_init(texture_t *texture, char *path) {
 
     stbi_set_flip_vertically_on_load(1);
     
-    int32_t channels;
+    i32 channels;
     unsigned char *pixels = stbi_load(path, &texture->width, &texture->height, &channels, 0);
-    if (!GAME_ASSERT(pixels != NULL)) {
+    if (!ASSERT(pixels != NULL)) {
         return TEXTURE_STATUS_FILE_NOT_FOUND;
     }
 
@@ -336,15 +336,15 @@ typedef struct {
     } uv;
 
     vec2_t pos, size; // local pos
-    float rot;
+    f32 rot;
 
     vec3_t color;
 
-    uint8_t zorder;
-    uint8_t flip;
+    u8 zorder;
+    u8 flip;
 } sprite_t;
 
-void sprite_init(sprite_t *sprite, texture_t *texture, vec2_t scale, vec2_t offset, vec2_t pos, vec2_t size, float rot, vec3_t color, uint8_t zorder, uint8_t flip) {
+void sprite_init(sprite_t *sprite, texture_t *texture, vec2_t scale, vec2_t offset, vec2_t pos, vec2_t size, f32 rot, vec3_t color, u8 zorder, u8 flip) {
     sprite->name = NULL;
     sprite->texture = texture;
     sprite->uv.scale = scale;
@@ -356,8 +356,6 @@ void sprite_init(sprite_t *sprite, texture_t *texture, vec2_t scale, vec2_t offs
     sprite->zorder = zorder;
     sprite->flip = flip;
 }
-
-// void sprite_init(sprite_t *sprite, texture_t *texture, vec2_t pos, vec2_t size, float rot, vec2_t scale, vec2_t offset, vec3_t color, uint32_t zorder) {}
 
 // TEXT
 
@@ -727,63 +725,61 @@ typedef struct command {
 
         struct {
             char content[64];
-            float scale;
+            f32 scale;
         } text;
     } data;
 
     vec2_t pos, size;
-    float rot;
+    f32 rot;
 
     vec3_t color;
 
     // temp
-    float dissolve;
+    f32 dissolve;
     // temp
 
-    uint8_t zorder;
-    uint8_t flip;
+    u8 zorder;
+    u8 flip;
 } command_t;
 
 typedef struct renderer {
-
     struct {
         command_t *commands;
-        uint32_t counter;
+        u32 counter;
     } frame;
     
     shader_t *shader;
-    uint32_t vao, vbo;
+    u32 vao, vbo;
 
     struct {
         shader_t *shader;
         texture_t texture;
-        uint32_t vao, vbo;
+        u32 vao, vbo;
     } text;
 
     struct {
         shader_t *shaders[2]; // crt, glitch
         texture_t textures[2];
-        uint32_t fbos[2];
+        u32 fbos[2];
     } postprocessing;
 
-    double time;
-
+    f64 time;
 } renderer_t;
 
 void _renderer_text_init(renderer_t *renderer) {
-    uint8_t bitmap[(FONT_WIDTH * 16) * (FONT_HEIGHT * 8)];
+    u8 bitmap[(FONT_WIDTH * 16) * (FONT_HEIGHT * 8)];
     memset(bitmap, 0, sizeof(bitmap));
     
-    for (uint32_t i = 0; i < 128; i++) {
-        uint32_t cpx = (i % 16) * FONT_WIDTH;
-        uint32_t cpy = (i / 16) * FONT_HEIGHT;
+    for (u32 i = 0; i < 128; i++) {
+        u32 cpx = (i % 16) * FONT_WIDTH;
+        u32 cpy = (i / 16) * FONT_HEIGHT;
         
-        for (uint32_t j = 0; j < FONT_HEIGHT; j++) {
-            for (uint32_t k = 0; k < FONT_WIDTH; k++) {
+        for (u32 j = 0; j < FONT_HEIGHT; j++) {
+            for (u32 k = 0; k < FONT_WIDTH; k++) {
                 if (GLYPHS[i][j][k]) {
-                    uint32_t px = cpx + k;
-                    uint32_t py = cpy + j;
-                    uint32_t mrk = (py * (FONT_WIDTH * 16)) + px;
+                    u32 px = cpx + k;
+                    u32 py = cpy + j;
+                    u32 mrk = (py * (FONT_WIDTH * 16)) + px;
                     bitmap[mrk] = 255;
                 }
             }
@@ -806,7 +802,7 @@ void _renderer_text_init(renderer_t *renderer) {
     glBindVertexArray(renderer->text.vao);
 
     glBindBuffer(GL_ARRAY_BUFFER, renderer->text.vbo);
-    glBufferData(GL_ARRAY_BUFFER, 256 * 6 * 4 * sizeof(float), NULL, GL_DYNAMIC_DRAW);
+    glBufferData(GL_ARRAY_BUFFER, 256 * 6 * 4 * sizeof(f32), NULL, GL_DYNAMIC_DRAW);
 
     glEnableVertexAttribArray(0);
     glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, sizeof(vec4_t), (void*) 0);
@@ -819,7 +815,7 @@ void _renderer_text_init(renderer_t *renderer) {
 }
 
 void _renderer_postprocess_init(renderer_t *renderer) {
-    for (uint32_t i = 0; i < 2; i++) {
+    for (u32 i = 0; i < 2; i++) {
         glGenFramebuffers(1, &renderer->postprocessing.fbos[i]);
         glBindFramebuffer(GL_FRAMEBUFFER, renderer->postprocessing.fbos[i]);
 
@@ -846,7 +842,6 @@ void _renderer_postprocess_init(renderer_t *renderer) {
 }
 
 void renderer_init(renderer_t *renderer, shader_t *shaders) {
-
     renderer->shader = &shaders[0]; // sprite
     renderer->text.shader = &shaders[1]; // text
     renderer->postprocessing.shaders[0] = &shaders[2]; // crt
@@ -867,7 +862,7 @@ void renderer_init(renderer_t *renderer, shader_t *shaders) {
 
     glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, sizeof(vec4_t), (void*) 0);
     glEnableVertexAttribArray(0);
-    glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, sizeof(vec4_t), (void*) (2 * sizeof(float)));
+    glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, sizeof(vec4_t), (void*) (2 * sizeof(f32)));
     glEnableVertexAttribArray(1);
 
     glBindBuffer(GL_ARRAY_BUFFER, 0);
@@ -880,7 +875,7 @@ void renderer_init(renderer_t *renderer, shader_t *shaders) {
     _renderer_postprocess_init(renderer);
 
     // PROJECTION
-    mat4_t projection = mat4_ortho(0.0f, (float) WINDOW_WIDTH, (float) WINDOW_HEIGHT, 0.0f, -1.0f, 1.0f);
+    mat4_t projection = mat4_ortho(0.0f, (f32) WINDOW_WIDTH, (f32) WINDOW_HEIGHT, 0.0f, -1.0f, 1.0f);
 
     shader_use(renderer->shader);
     shader_set_mat4(renderer->shader, "u_Projection", projection);
@@ -900,7 +895,7 @@ void renderer_frame_clear(renderer_t *renderer) { // i have to find out, if it c
     renderer->frame.counter = 0;
 }
 
-void _renderer_sprite_draw(renderer_t *renderer, texture_t *texture, vec4_t uv, vec4_t trans, float rot, vec3_t color, float dissolve, uint8_t flip) {
+void _renderer_sprite_draw(renderer_t *renderer, texture_t *texture, vec4_t uv, vec4_t trans, f32 rot, vec3_t color, f32 dissolve, u8 flip) {
     mat4_t model = mat4(1.0f);
     model = mat4_trans(model, vec3(trans.x, trans.y, 0.0f));
     model = mat4_trans(model, vec3(trans.z * 0.5f, trans.w * 0.5f, 0.0f)); // what does it do? cant remember
@@ -931,28 +926,28 @@ void _renderer_sprite_draw(renderer_t *renderer, texture_t *texture, vec4_t uv, 
     glBindVertexArray(0);
 }
 
-void _renderer_text_draw(renderer_t *renderer, char *content, float x, float y, float scale, vec3_t color) {
+void _renderer_text_draw(renderer_t *renderer, char *content, f32 x, f32 y, f32 scale, vec3_t color) {
 // #ifdef _WIN32
     vec4_t vertices[RENDERER_TEXT_LENGTH * 6];
 // #else
 //     vec4_t vertices[strlen(content) * 6];
 // #endif
-    uint32_t c = 0, len = strlen(content);
+    u32 c = 0, len = strlen(content);
 
-    float cx = x;
-    for (uint32_t i = 0; i < len; i++) {
-        float col = (float) (content[i] % 16);
-        float row = (float) (content[i] / 16);
+    f32 cx = x;
+    for (u32 i = 0; i < len; i++) {
+        f32 col = (f32) (content[i] % 16);
+        f32 row = (f32) (content[i] / 16);
 
-        float umin = col / 16.0f;
-        float vmin = row / 8.0f;
-        float umax = (col + 1.0f) / 16.0f;
-        float vmax = (row + 1.0f) / 8.0f;
+        f32 umin = col / 16.0f;
+        f32 vmin = row / 8.0f;
+        f32 umax = (col + 1.0f) / 16.0f;
+        f32 vmax = (row + 1.0f) / 8.0f;
 
-        float sx = cx;
-        float sy = y;
-        float w = FONT_WIDTH * scale;
-        float h = FONT_HEIGHT * scale;
+        f32 sx = cx;
+        f32 sy = y;
+        f32 w = FONT_WIDTH * scale;
+        f32 h = FONT_HEIGHT * scale;
 
         vertices[c++] = vec4(sx, sy + h, umin, vmin);
         vertices[c++] = vec4(sx, sy, umin, vmax);
@@ -982,8 +977,8 @@ void _renderer_text_draw(renderer_t *renderer, char *content, float x, float y, 
 }
 
 void _renderer_postprocess_draw(renderer_t *renderer) {
-    uint32_t mrk = 0;
-    for (uint32_t i = 0; i < 2; i++) { // loop postprocess shaders
+    u32 mrk = 0;
+    for (u32 i = 0; i < 2; i++) { // loop postprocess shaders
         if (i == 1) glBindFramebuffer(GL_FRAMEBUFFER, 0); // last loop
         else glBindFramebuffer(GL_FRAMEBUFFER, renderer->postprocessing.fbos[mrk ? 0 : 1]);
 
@@ -999,7 +994,7 @@ void _renderer_postprocess_draw(renderer_t *renderer) {
             shader_set_float(renderer->postprocessing.shaders[i], "u_Bleed", 0.0016f);
             shader_set_float(renderer->postprocessing.shaders[i], "u_Vignette", 0.4f);
             shader_set_float(renderer->postprocessing.shaders[i], "u_Grain", 0.16f);
-            shader_set_float(renderer->postprocessing.shaders[i], "u_Time", (float) renderer->time);
+            shader_set_float(renderer->postprocessing.shaders[i], "u_Time", (f32) renderer->time);
         } else if (i == 1) { // glitch'
             // shader_use(renderer->postprocessing.shaders[i]);
             // shader_set_float(renderer->shader, "u_Time", 1.0f);
@@ -1022,7 +1017,7 @@ void renderer_draw(renderer_t *renderer) {
     glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
     glClear(GL_COLOR_BUFFER_BIT);
 
-    for (uint32_t i = 0; i < renderer->frame.counter; i++) {
+    for (u32 i = 0; i < renderer->frame.counter; i++) {
         if (renderer->frame.commands[i].type == COMMAND_TYPE_SPRITE) {
             _renderer_sprite_draw(
                 renderer,
@@ -1057,7 +1052,7 @@ void renderer_destroy(renderer_t *renderer) {
     glDeleteBuffers(1, &renderer->text.vbo);
     texture_destroy(&renderer->text.texture);
 
-    for (uint32_t i = 0; i < 2; i++) {
+    for (u32 i = 0; i < 2; i++) {
         glDeleteFramebuffers(1, &renderer->postprocessing.fbos[i]);
         texture_destroy(&renderer->postprocessing.textures[i]);
     }
@@ -1104,9 +1099,9 @@ typedef enum {
 
 typedef struct {
     vec2_t vel, force;
-    float mass, grav;
-    float fric, drag;
-    float bounce;
+    f32 mass, grav;
+    f32 fric, drag;
+    f32 bounce;
 } rigidbody_t;
 
 #define GAME_COLL_NONE 0
@@ -1117,10 +1112,10 @@ typedef struct {
 
 typedef struct {
     vec2_t min, max;
-    uint8_t mask;
+    u8 mask;
 } collider_t;
 
-uint8_t game_collider_aabb_check(collider_t *a, collider_t *b) {
+u8 game_collider_aabb_check(collider_t *a, collider_t *b) {
     return (b->min.x < a->max.x && b->max.x > a->min.x && b->min.y < a->max.y && b->max.y > a->min.y);
 }
 
@@ -1136,7 +1131,7 @@ void game_rect_init(rect_t *rect, sprite_t *sprite, vec2_t pos, vec2_t size) {
     rect->sprite = sprite;
 }
 
-void game_rect_trans(rect_t *rect, vec2_t pos, float rot, vec2_t scale) {}
+void game_rect_trans(rect_t *rect, vec2_t pos, f32 rot, vec2_t scale) {}
 
 typedef enum {
     ACTOR_ACTION_IDLE = 0,
@@ -1151,7 +1146,7 @@ typedef enum {
 
 typedef struct {
     vec2_t position, size;
-    float rotation;
+    f32 rotation;
     vec2_t clip, offset;
 } actor_state_t;
 
@@ -1165,7 +1160,7 @@ typedef enum {
 
 typedef struct {
     actor_animation_step_t step;
-    uint8_t tick, lock;
+    u8 tick, lock;
 } actor_animation_t;
 
 typedef enum {
@@ -1186,22 +1181,22 @@ typedef struct {
 
     ml_trajectory_t traject;
 
-    uint16_t cooldowns[3];
-    uint16_t stats[2]; // wohoooo
+    u16 cooldowns[3];
+    u16 stats[2]; // wohoooo
 
     // effects struct
-    float effects[1];
+    f32 effects[1];
     // effects
 
-    uint8_t alive, grounded;
-    uint8_t jumped, crouched, dashed;
-    uint8_t flip;
+    u8 alive, grounded;
+    u8 jumped, crouched, dashed;
+    u8 flip;
 
-    uint16_t kills; // change to uint16_t stats[2]? (don't forget to prevent overflow: KILLS < UINT16_MAX)
-    uint16_t deaths;
+    u16 kills; // change to uint16_t stats[2]? (don't forget to prevent overflow: KILLS < UINT16_MAX)
+    u16 deaths;
 } actor_t;
 
-void game_actor_trans(actor_t *actor, vec2_t pos, float rot, vec2_t scale) {
+void game_actor_trans(actor_t *actor, vec2_t pos, f32 rot, vec2_t scale) {
     actor->pos = pos;
     actor->rigb.vel = vec2(0.0f, 0.0f); // temp?
     actor->coll.min = pos;
@@ -1214,39 +1209,39 @@ typedef struct {
     collider_t coll;
     sprite_t sprite;
     actor_t *shooter;
-    uint8_t used;
-    uint8_t flip;
+    u8 used;
+    u8 flip;
 } bullet_t;
 
 typedef struct {
     vec2_t pos, vel;
     vec3_t color;
-    float start, end;
-    uint8_t used;
+    f32 start, end;
+    u8 used;
 } particle_t;
 
 static struct {
 
     struct {
         GLFWwindow *window;
-        int32_t keys[512];
+        i32 keys[512];
     } sys;
 
     struct {
-        double lft, dt; // last frame time, delta time
+        f64 lft, dt; // last frame time, delta time
 
         struct {
-            double accum; // accum?
+            f64 accum; // accum?
         } physics;
 
         struct {
-            double accum;
+            f64 accum;
         } animation;
 
         struct {
-            double timer;
-            uint32_t counter;
-            uint32_t value;
+            f64 timer;
+            u32 counter;
+            u32 value;
         } framerate;
 
     } clock;
@@ -1272,7 +1267,7 @@ static struct {
 
             rect_t ground; // arr?
             
-            uint16_t turn;
+            u16 turn;
         } level;
 
         actor_t player;
@@ -1281,8 +1276,8 @@ static struct {
 
     struct {
         ml_network_t network;
-        float *region; // make builft-in arena in libml
-        uint8_t capped;
+        f32 *region; // make builft-in arena in libml
+        u8 capped;
     } ml;
 
 } context;
@@ -1309,23 +1304,23 @@ void game_level_reset(void) {
     context.game.enemy.flip = 1;
 
     game_actor_trans(&context.game.player, vec2((50.0f + (ml_random() * 200.0f)), 50.0f), 0.0f, vec2(1.0f, 1.0f));
-    game_actor_trans(&context.game.enemy, vec2(((float) WINDOW_WIDTH - 50.0f - (context.game.enemy.sprites[context.game.enemy.action].size.x) - (ml_random() * 200.0f)), 50.0f), 0.0f, vec2(1.0f, 1.0f));
+    game_actor_trans(&context.game.enemy, vec2(((f32) WINDOW_WIDTH - 50.0f - (context.game.enemy.sprites[context.game.enemy.action].size.x) - (ml_random() * 200.0f)), 50.0f), 0.0f, vec2(1.0f, 1.0f));
 
-    for (uint32_t i = 0; i < GAME_LEVEL_BULLET_ARRAY_SIZE; i++) context.game.level.bullets[i].used = 0;
+    for (u32 i = 0; i < GAME_LEVEL_BULLET_ARRAY_SIZE; i++) context.game.level.bullets[i].used = 0;
 }
 
-void game_particle_spawn(vec2_t pos, float direct, vec3_t color) {
-    for (uint32_t i = 0; i < 32; i++) {
-        for (uint32_t j = 0; j < GAME_LEVEL_PARTICLE_ARRAY_SIZE; j++) {
+void game_particle_spawn(vec2_t pos, f32 direct, vec3_t color) {
+    for (u32 i = 0; i < 32; i++) {
+        for (u32 j = 0; j < GAME_LEVEL_PARTICLE_ARRAY_SIZE; j++) {
             if (context.game.level.particles[j].used) continue;
 
-            const float drag = 0.98f;
+            const f32 drag = 0.98f;
 
-            float angle = (random() * 30.0f - 15.0f) * (PI / 180.0f);
-            float speed = random() * 256.0f;
+            f32 angle = (random() * 30.0f - 15.0f) * (PI / 180.0f);
+            f32 speed = random() * 256.0f;
 
-            float vx = (cosf(angle) * speed * direct) * drag;
-            float vy = (sinf(angle) * speed) * drag;
+            f32 vx = (cosf(angle) * speed * direct) * drag;
+            f32 vy = (sinf(angle) * speed) * drag;
 
             context.game.level.particles[j] = (particle_t) {
                 .pos = vec2(pos.x, pos.y + (random() * 4.0f - 2.0f)),
@@ -1359,7 +1354,7 @@ void game_bullet_colls_handle(bullet_t *bullet, collider_t **colls) { // it has 
     bullet->coll.max = vec2(bullet->pos.x + (GAME_ACTOR_SPRITE_SCALE * 8.0f), bullet->pos.y + (GAME_ACTOR_SPRITE_SCALE * 4.0f));
     bullet->coll.mask = GAME_COLL_NONE;
 
-    for (uint32_t i = 0; i < 2; i++) {
+    for (u32 i = 0; i < 2; i++) {
         if (game_collider_aabb_check(&bullet->coll, colls[i])) {
             if (bullet->shooter->coll.min.x == colls[i]->min.x && bullet->shooter->coll.min.y == colls[i]->min.y
                 && bullet->shooter->coll.max.x == colls[i]->max.x && bullet->shooter->coll.max.y == colls[i]->max.y) continue;
@@ -1383,7 +1378,7 @@ void game_bullet_actor_colls_handle(bullet_t *bullet, actor_t **actors) {
     );
     bullet->coll.mask = GAME_COLL_NONE;
 
-    for (uint32_t i = 0; i < 2; i++) {
+    for (u32 i = 0; i < 2; i++) {
         if (game_collider_aabb_check(&bullet->coll, &actors[i]->coll)) {
             if (!actors[i]->alive || bullet->shooter == actors[i]) continue;
 
@@ -1412,7 +1407,7 @@ void game_bullet_actor_colls_handle(bullet_t *bullet, actor_t **actors) {
     }
 }
 
-void game_actor_move(actor_t *actor, float xacc, uint8_t jump, uint8_t crouch, uint8_t dash) {
+void game_actor_move(actor_t *actor, f32 xacc, u8 jump, u8 crouch, u8 dash) {
     if (!actor->alive) return;
 
     if (actor->pos.x <= 0.0f) actor->pos.x = 0.0f;
@@ -1531,7 +1526,7 @@ void game_actor_shoot(actor_t *actor) {
         .flip = actor->flip
     };
 
-    for (uint32_t i = 0; i < GAME_LEVEL_BULLET_ARRAY_SIZE; i++) { // is uint32_t bad as a loop index?
+    for (u32 i = 0; i < GAME_LEVEL_BULLET_ARRAY_SIZE; i++) { // is uint32_t bad as a loop index?
         if (!context.game.level.bullets[i].used) {context.game.level.bullets[i] = bullet; break;}
     }
 
@@ -1548,7 +1543,7 @@ void game_actor_colls_handle(actor_t *actor, collider_t **colls) {
     actor->grounded = 0;
 
     // for (uint32_t i = 0; colls[i] != NULL; i++) // works well with: collider_t *pcolls[3] = {&a, &b, NULL};
-    for (uint32_t i = 0; i < 2; i++) {
+    for (u32 i = 0; i < 2; i++) {
         if (game_collider_aabb_check(&actor->coll, colls[i])) {
             if (actor->rigb.vel.x > 0) {
                 actor->pos.x = colls[i]->min.x - actor->sprites[actor->action].size.x;
@@ -1565,7 +1560,7 @@ void game_actor_colls_handle(actor_t *actor, collider_t **colls) {
     actor->coll.min = actor->pos;
     actor->coll.max = vec2(actor->pos.x + actor->sprites[actor->action].size.x, actor->crouched ? actor->pos.y + (actor->sprites[actor->action].size.y * 0.5f) : actor->pos.y + actor->sprites[actor->action].size.y);
 
-    for (uint32_t i = 0; i < 2; i++) {
+    for (u32 i = 0; i < 2; i++) {
         if (game_collider_aabb_check(&actor->coll, colls[i])) {
             if (actor->rigb.vel.y > 0) {
                 actor->pos.y = colls[i]->min.y - (actor->crouched ? (actor->sprites[actor->action].size.y / 2.0f) : actor->sprites[actor->action].size.y);
@@ -1584,13 +1579,12 @@ void game_actor_colls_handle(actor_t *actor, collider_t **colls) {
 void game_res_init(void) {} // load shaders and textures
 
 void game_ml_init(void) {
-    
-    float *memregs[5] = {
-        mem_arena_alloc(&context.arena, GAME_ML_INPUTS * GAME_ML_HIDDEN_NEURONS * sizeof(float)),
-        mem_arena_alloc(&context.arena, GAME_ML_HIDDEN_NEURONS * sizeof(float)),
-        mem_arena_alloc(&context.arena, GAME_ML_OUTPUTS * GAME_ML_HIDDEN_NEURONS * sizeof(float)),
-        mem_arena_alloc(&context.arena, GAME_ML_OUTPUTS * sizeof(float)),
-        mem_arena_alloc(&context.arena, GAME_ML_HIDDEN_NEURONS * sizeof(float))
+    f32 *memregs[5] = {
+        mem_arena_alloc(&context.arena, GAME_ML_INPUTS * GAME_ML_HIDDEN_NEURONS * sizeof(f32)),
+        mem_arena_alloc(&context.arena, GAME_ML_HIDDEN_NEURONS * sizeof(f32)),
+        mem_arena_alloc(&context.arena, GAME_ML_OUTPUTS * GAME_ML_HIDDEN_NEURONS * sizeof(f32)),
+        mem_arena_alloc(&context.arena, GAME_ML_OUTPUTS * sizeof(f32)),
+        mem_arena_alloc(&context.arena, GAME_ML_HIDDEN_NEURONS * sizeof(f32))
     };
 
     ml_network_init(&context.ml.network, memregs, GAME_ML_HIDDEN_NEURONS, GAME_ML_INPUTS, GAME_ML_OUTPUTS);
@@ -1604,25 +1598,24 @@ void game_ml_init(void) {
 
     context.ml.region = mem_arena_alloc(&context.arena, ((size.x + size.y + size.z + size.w) + (GAME_ML_OUTPUTS * 2) + (GAME_ML_HIDDEN_NEURONS * 3) + (size.z * 2) + GAME_ML_INPUTS + (GAME_ML_INPUTS * GAME_ML_HIDDEN_NEURONS)) * sizeof(float));
     context.ml.capped = 0;
-
 }
 
-void game_ml_step(actor_t *actor, actor_t *enemy, ml_trajectory_t *traject, int8_t quadrant) {
+void game_ml_step(actor_t *actor, actor_t *enemy, ml_trajectory_t *traject, i8 quadrant) {
     if (!actor->alive) return;
 
-    float bdx = 0.0f, bdy = 0.0f;
-    float mdist = 9999999.0f, threat = 0.0f;
+    f32 bdx = 0.0f, bdy = 0.0f;
+    f32 mdist = 9999999.0f, threat = 0.0f;
 
-    for (uint32_t i = 0; i < GAME_LEVEL_BULLET_ARRAY_SIZE; i++) { // bullet awareness
+    for (u32 i = 0; i < GAME_LEVEL_BULLET_ARRAY_SIZE; i++) { // bullet awareness
         if (context.game.level.bullets[i].used && context.game.level.bullets[i].shooter != actor) {
             
-            float dx = context.game.level.bullets[i].pos.x - actor->pos.x;
-            float dy = context.game.level.bullets[i].pos.y - actor->pos.y;
-            float dist = (dx * dx) + (dy * dy);
+            f32 dx = context.game.level.bullets[i].pos.x - actor->pos.x;
+            f32 dy = context.game.level.bullets[i].pos.y - actor->pos.y;
+            f32 dist = (dx * dx) + (dy * dy);
             
             if (dist < mdist) {
-                bdx = (dx * quadrant) / (float) WINDOW_WIDTH;
-                bdy = dy / (float) WINDOW_HEIGHT;
+                bdx = (dx * quadrant) / (f32) WINDOW_WIDTH;
+                bdy = dy / (f32) WINDOW_HEIGHT;
                 mdist = dist;
 
                 if ((dx > 0 && context.game.level.bullets[i].rigb.vel.x < 0) || (dx < 0 && context.game.level.bullets[i].rigb.vel.x > 0)) threat = 1.0f; 
@@ -1631,38 +1624,38 @@ void game_ml_step(actor_t *actor, actor_t *enemy, ml_trajectory_t *traject, int8
         }
     }
 
-    float inputs[GAME_ML_INPUTS] = {
-        ((enemy->pos.x - actor->pos.x) * quadrant) / (float) WINDOW_WIDTH,
-        (enemy->pos.y - actor->pos.y) / (float) WINDOW_HEIGHT,
+    f32 inputs[GAME_ML_INPUTS] = {
+        ((enemy->pos.x - actor->pos.x) * quadrant) / (f32) WINDOW_WIDTH,
+        (enemy->pos.y - actor->pos.y) / (f32) WINDOW_HEIGHT,
         (enemy->rigb.vel.x * quadrant) / 1000.0f,
         enemy->rigb.vel.y / 1000.0f,
-        (float) enemy->grounded,
+        (f32) enemy->grounded,
         actor->cooldowns[ACTOR_COOLDOWN_SHOOT] > 0 ? 1.0f : 0.0f,
         bdx,
         bdy,
         (actor->rigb.vel.x * quadrant) / 1000.0f,
         actor->rigb.vel.y / 1000.0f,
-        (float) actor->grounded,
+        (f32) actor->grounded,
         ((!actor->flip && enemy->pos.x > actor->pos.x) || (actor->flip && enemy->pos.x < actor->pos.x)),
-        ((quadrant == 1.0f) ? actor->pos.x : ((float) WINDOW_WIDTH - actor->pos.x)) / (float) WINDOW_WIDTH,
+        ((quadrant == 1.0f) ? actor->pos.x : ((f32) WINDOW_WIDTH - actor->pos.x)) / (f32) WINDOW_WIDTH,
         enemy->cooldowns[ACTOR_COOLDOWN_SHOOT] > 0 ? 1.0f : 0.0f,
         threat,
         actor->cooldowns[ACTOR_COOLDOWN_DASH] > 0 ? 1.0f : 0.0f
     };
     mat_t state = mat(inputs, 1, GAME_ML_INPUTS);
 
-    float outputs[GAME_ML_OUTPUTS];
+    f32 outputs[GAME_ML_OUTPUTS];
     mat_t prob = mat(outputs, 1, GAME_ML_OUTPUTS);
 
     ml_network_forward_move(&context.ml.network, &state, &prob);
 
-    float xacc = 0.0f;
-    uint8_t jump = 0, crouch = 0, shoot = 0, dash = 0;
+    f32 xacc = 0.0f;
+    u8 jump = 0, crouch = 0, shoot = 0, dash = 0;
 
-    int32_t actions[2] = {4, 8};
+    i32 actions[2] = {4, 8};
 
-    float sample = ml_random(), accum = 0.0f;
-    for (uint32_t i = 0; i < 6; i++) {
+    f32 sample = ml_random(), accum = 0.0f;
+    for (u32 i = 0; i < 6; i++) {
         accum += prob.data[i];
         if (sample <= accum) {
             actions[0] = i; break;
@@ -1670,7 +1663,7 @@ void game_ml_step(actor_t *actor, actor_t *enemy, ml_trajectory_t *traject, int8
     }
 
     sample = ml_random(), accum = 0.0f;
-    for (uint32_t i = 6; i < 9; i++) {
+    for (u32 i = 6; i < 9; i++) {
         accum += prob.data[i];
         if (sample <= accum) {
             actions[1] = i; break;
@@ -1701,28 +1694,28 @@ void game_ml_step(actor_t *actor, actor_t *enemy, ml_trajectory_t *traject, int8
     collider_t *colls[] = {&context.game.level.ground.coll, &enemy->coll};
     game_actor_colls_handle(actor, colls);
 
-    float reward = -0.02f;
+    f32 reward = -0.02f;
 
-    float enemydist = fabsf(enemy->pos.x - actor->pos.x);
+    f32 enemydist = fabsf(enemy->pos.x - actor->pos.x);
     if (enemydist > 150.0f && enemydist < 450.0f) reward += 0.1f;
     else if (enemydist > 450.0f) reward -= 0.2f;
     else reward -= 0.1f;
 
-    float middist = fabsf(actor->pos.x - (WINDOW_WIDTH * 0.5f));
+    f32 middist = fabsf(actor->pos.x - (WINDOW_WIDTH * 0.5f));
     if (middist > 300.0f) reward -= 0.5f;
 
-    uint8_t lowdist = (mdist < 15000.0f);
+    u8 lowdist = (mdist < 15000.0f);
     if (lowdist && actions[0] == 3) reward += 0.2f;
     if (!lowdist && actions[0] == 3) reward -= 0.1f;
     if (!lowdist && actions[0] == 4) reward -= 0.1f;
     if (lowdist && actions[0] == 5) reward += 0.2f;
     if (!lowdist && actions[0] == 5) reward -= 0.1f;
 
-    uint8_t facing = ((!actor->flip && enemy->pos.x > actor->pos.x) || (actor->flip && enemy->pos.x < actor->pos.x));
+    u8 facing = ((!actor->flip && enemy->pos.x > actor->pos.x) || (actor->flip && enemy->pos.x < actor->pos.x));
     if (!facing) reward -= 0.05f;
 
     if (shoot) {
-        uint8_t valid = (actor->alive && actor->cooldowns[ACTOR_COOLDOWN_SHOOT] == 0);
+        u8 valid = (actor->alive && actor->cooldowns[ACTOR_COOLDOWN_SHOOT] == 0);
 
         game_actor_shoot(actor);
 
@@ -1743,9 +1736,9 @@ void game_ml_step(actor_t *actor, actor_t *enemy, ml_trajectory_t *traject, int8
 
 void _game_win32_icon_init(void) {
     const char *path = "res/texture/icon.png";
-    int32_t width, height, channels;
+    i32 width, height, channels;
     unsigned char *pixels = stbi_load(path, &width, &height, &channels, 0);
-    if (!GAME_ASSERT(pixels != NULL)) {
+    if (!ASSERT(pixels != NULL)) {
         // do smth
     }
     // ASSERT(pixels, "ICON_READ_ERROR: %s", path);
@@ -1756,7 +1749,7 @@ void _game_win32_icon_init(void) {
     stbi_image_free(pixels);
 }
 
-void _game_keyboard_callback(GLFWwindow *window, int32_t key, int32_t scan, int32_t action, int32_t mode) {
+void _game_keyboard_callback(GLFWwindow *window, i32 key, i32 scan, i32 action, i32 mode) {
     if (key > -1 && key < 512) {
         if (action == GLFW_PRESS) context.sys.keys[key] = 1;
         else if (action == GLFW_RELEASE) context.sys.keys[key] = 0;
@@ -1798,8 +1791,8 @@ void game_keyboard_handle(void) { // it has to rewritten as well (try to handle 
     if (context.game.state != GAME_STATE_PLAY) return;
     if (context.game.controller != GAME_CONTROLLER_MANUAL) return;
 
-    float xacc = 0.0f;
-    uint8_t jump = 0, crouch = 0, dash = 0;
+    f32 xacc = 0.0f;
+    u8 jump = 0, crouch = 0, dash = 0;
 
     // KEY W
     if (context.sys.keys[GLFW_KEY_W] == 1) {
@@ -1852,7 +1845,7 @@ void game_keyboard_handle(void) { // it has to rewritten as well (try to handle 
 void game_init(void) {
 
     // GLFW
-    if (!GAME_ASSERT(glfwInit())) {
+    if (!ASSERT(glfwInit())) {
         // do smth
     }
     // ASSERT(glfwInit(), "OPENGL_INIT_ERROR\n");
@@ -1867,7 +1860,7 @@ void game_init(void) {
     glfwWindowHint(GLFW_RESIZABLE, GL_FALSE);
 
     context.sys.window = glfwCreateWindow(WINDOW_WIDTH, WINDOW_HEIGHT, WINDOW_NAME, NULL, NULL);
-    if (!GAME_ASSERT(context.sys.window != NULL)) {
+    if (!ASSERT(context.sys.window != NULL)) {
         // do smth
     }
 
@@ -1880,8 +1873,8 @@ void game_init(void) {
     // GLEW
 #ifndef __APPLE__
     glewExperimental = 1; // what?
-    int32_t glewerr = glewInit();
-    if (!GAME_ASSERT(glewerr == 0 || glewerr == 4)) {
+    i32 glewerr = glewInit();
+    if (!ASSERT(glewerr == 0 || glewerr == 4)) {
         // do smth
     }
     // ASSERT(glewerr == 0 || glewerr == 4, "GLEW_INIT_ERROR\n"); // this needs to be rethinked
@@ -1906,7 +1899,7 @@ void game_init(void) {
 
     // RESOURCES
     context.res.shaders = mem_arena_alloc(&context.arena, GAME_RESOURCES_SHADER_ARRAY_SIZE * sizeof(shader_t));
-    if (!GAME_ASSERT(context.res.shaders != NULL)) {/*do something*/}
+    if (!ASSERT(context.res.shaders != NULL)) {/*do something*/}
 
     if (shader_init(&context.res.shaders[0], (const char*[]) {"res/shader/sprite.vs", "res/shader/sprite.fs"}) != SHADER_STATUS_SUCCESS) {
         // do something as well
@@ -1957,17 +1950,17 @@ void game_init(void) {
     // context.game.controller = GAME_CONTROLLER_MANUAL;
     context.game.level.sprites = mem_arena_alloc(&context.arena, GAME_LEVEL_SPRITE_ARRAY_SIZE * sizeof(sprite_t));
     context.game.level.bullets = mem_arena_alloc(&context.arena, GAME_LEVEL_BULLET_ARRAY_SIZE * sizeof(bullet_t));
-    for (uint32_t i = 0; i < GAME_LEVEL_BULLET_ARRAY_SIZE; i++) context.game.level.bullets[i] = (bullet_t) {0}; // is there a cooler way to init this?
+    for (u32 i = 0; i < GAME_LEVEL_BULLET_ARRAY_SIZE; i++) context.game.level.bullets[i] = (bullet_t) {0}; // is there a cooler way to init this?
     context.game.level.particles = mem_arena_alloc(&context.arena, GAME_LEVEL_PARTICLE_ARRAY_SIZE * sizeof(particle_t));
-    for (uint32_t i = 0; i < GAME_LEVEL_PARTICLE_ARRAY_SIZE; i++) context.game.level.particles[i] = (particle_t) {0};
+    for (u32 i = 0; i < GAME_LEVEL_PARTICLE_ARRAY_SIZE; i++) context.game.level.particles[i] = (particle_t) {0};
     context.game.level.turn = 0;
 
     sprite_init(&context.game.level.sprites[0], &context.res.textures[1], vec2(1.0f, 1.0f), vec2(0.0f, 0.0f), vec2(0.0f, 0.0f), vec2(GAME_ACTOR_SPRITE_SCALE * 6.0f, GAME_ACTOR_SPRITE_SCALE * 6.0f), 0.0f, vec3(1.0f, 1.0f, 1.0f), 0, 0); // bullet
     sprite_init(&context.game.level.sprites[1], &context.res.textures[2], vec2(1.0f, 1.0f), vec2(0.0f, 0.0f), vec2(0.0f, 0.0f), vec2(GAME_ACTOR_SPRITE_SCALE * 18.0f, GAME_ACTOR_SPRITE_SCALE * 8.0f), 0.0f, vec3(1.0f, 1.0f, 1.0f), 0, 0); // gun
-    sprite_init(&context.game.level.sprites[2], &context.res.textures[3], vec2(1.0f, 1.0f), vec2(0.0f, 0.0f), vec2(0.0f, 0.0f), vec2((float) WINDOW_WIDTH, 50.0f), 0.0f, vec3(1.0f, 1.0f, 1.0f), 0, 0); // rect
+    sprite_init(&context.game.level.sprites[2], &context.res.textures[3], vec2(1.0f, 1.0f), vec2(0.0f, 0.0f), vec2(0.0f, 0.0f), vec2((f32) WINDOW_WIDTH, 50.0f), 0.0f, vec3(1.0f, 1.0f, 1.0f), 0, 0); // rect
 
     // level
-    game_rect_init(&context.game.level.ground, &context.game.level.sprites[2], vec2(0.0f, 0.0f), vec2((float) WINDOW_WIDTH, ((float) WINDOW_HEIGHT / 12.0f)));
+    game_rect_init(&context.game.level.ground, &context.game.level.sprites[2], vec2(0.0f, 0.0f), vec2((f32) WINDOW_WIDTH, ((f32) WINDOW_HEIGHT / 12.0f)));
 
     // actor
     context.game.player.pos = vec2(100.0f, 50.0f);
@@ -1995,9 +1988,9 @@ void game_init(void) {
     // sprite_init(&context.game.player.sprites[6], &context.res.textures[10], vec2(0.0f, 0.0f), vec2(48.0f * GAME_ACTOR_SPRITE_SCALE, 48.0f * GAME_ACTOR_SPRITE_SCALE), 0.0f, vec2(0.167f, 1.0f), vec2(0.167f, 0.0f), vec3(1.0f, 1.0f, 1.0f), 0); // attack
     sprite_init(&context.game.player.sprites[7], &context.res.textures[11], vec2(0.167f, 1.0f), vec2(0.501f, 0.0f), vec2(0.0f, 0.0f), vec2(GAME_ACTOR_SPRITE_SCALE * 48.0f, GAME_ACTOR_SPRITE_SCALE * 48.0f), 0.0f, vec3(1.0f, 1.0f, 1.0f), 0, 0); // death
 
-    context.game.enemy.pos = vec2((float) WINDOW_WIDTH - 100.0f - (GAME_ACTOR_SPRITE_SCALE * 16.0f), 50.0f);
+    context.game.enemy.pos = vec2((f32) WINDOW_WIDTH - 100.0f - (GAME_ACTOR_SPRITE_SCALE * 16.0f), 50.0f);
     context.game.enemy.rigb = (rigidbody_t) {.vel = vec2(0.0f, 0.0f), .force = vec2(0.0f, 0.0f), .mass = 1.0f, .grav = 1.0f, .fric = 0.9f, .drag = 0.94f, .bounce = 0.0f};
-    context.game.enemy.coll = (collider_t) {.min = vec2(((float) WINDOW_WIDTH - 100.0f - (GAME_ACTOR_SPRITE_SCALE * 16.0f)), 50.0f), .max = vec2(((float) WINDOW_WIDTH - 100.0f - (GAME_ACTOR_SPRITE_SCALE * 16.0f)) + (GAME_ACTOR_SPRITE_SCALE * 20.0f), 50.0f + (GAME_ACTOR_SPRITE_SCALE * 35.0f)), .mask = GAME_COLL_NONE};
+    context.game.enemy.coll = (collider_t) {.min = vec2(((f32) WINDOW_WIDTH - 100.0f - (GAME_ACTOR_SPRITE_SCALE * 16.0f)), 50.0f), .max = vec2(((f32) WINDOW_WIDTH - 100.0f - (GAME_ACTOR_SPRITE_SCALE * 16.0f)) + (GAME_ACTOR_SPRITE_SCALE * 20.0f), 50.0f + (GAME_ACTOR_SPRITE_SCALE * 35.0f)), .mask = GAME_COLL_NONE};
     context.game.enemy.sprites = mem_arena_alloc(&context.arena, GAME_ACTOR_SPRITE_ARRAY_SIZE * sizeof(sprite_t));
     context.game.enemy.action = ACTOR_ACTION_IDLE;
     context.game.enemy.animation = (actor_animation_t) {.step = ACTOR_ANIMATION_STEP_4, .tick = 0, .lock = 0};
@@ -2022,15 +2015,15 @@ void game_init(void) {
     // ML
     game_ml_init();
 
-    ml_trajectory_init(&context.game.player.traject, mem_arena_alloc(&context.arena, ML_EPISODE_STEPS * GAME_ML_INPUTS * sizeof(float)), GAME_ML_INPUTS);
-    ml_trajectory_init(&context.game.enemy.traject, mem_arena_alloc(&context.arena, ML_EPISODE_STEPS * GAME_ML_INPUTS * sizeof(float)), GAME_ML_INPUTS);
+    ml_trajectory_init(&context.game.player.traject, mem_arena_alloc(&context.arena, ML_EPISODE_STEPS * GAME_ML_INPUTS * sizeof(f32)), GAME_ML_INPUTS);
+    ml_trajectory_init(&context.game.enemy.traject, mem_arena_alloc(&context.arena, ML_EPISODE_STEPS * GAME_ML_INPUTS * sizeof(f32)), GAME_ML_INPUTS);
 
     // CLOCK
     context.clock.lft = glfwGetTime();
 
 #ifdef DEBUG
-    printf("GAME_MEMORY: Used %.2f MB / %.2f MB (%.2f%%)\n", ((float) (context.arena.used) / (1024.0f * 1024.0f)), 
-        ((float) (context.arena.capacity) / (1024.0f * 1024.0f)), (double) context.arena.used / (double) context.arena.capacity * 100.0);
+    printf("GAME_MEMORY: Used %.2f MB / %.2f MB (%.2f%%)\n", ((f32) (context.arena.used) / (1024.0f * 1024.0f)), 
+        ((f32) (context.arena.capacity) / (1024.0f * 1024.0f)), (f64) context.arena.used / (f64) context.arena.capacity * 100.0);
 #endif
 
     // context.game.state = GAME_STATE_PLAY;
@@ -2041,12 +2034,12 @@ void game_update(void) {
     while (!glfwWindowShouldClose(context.sys.window)) {
 
         // CLOCK
-        const double time = glfwGetTime();
+        const f64 time = glfwGetTime();
         context.clock.dt = time - context.clock.lft;
         context.clock.lft = time;
 
         // loader
-        static double timer = 0.0;
+        static f64 timer = 0.0;
         if (context.game.state == GAME_STATE_LOAD) {
             if ((timer += context.clock.dt) >= 1.0) context.game.state = GAME_STATE_PAUSE;
         }
@@ -2055,7 +2048,7 @@ void game_update(void) {
         context.clock.framerate.timer += context.clock.dt;
 
         if (context.clock.framerate.timer >= 1.0f) {
-            context.clock.framerate.value = (uint32_t) context.clock.framerate.counter / context.clock.framerate.timer;
+            context.clock.framerate.value = (u32) context.clock.framerate.counter / context.clock.framerate.timer;
             context.clock.framerate.timer -= 1.0f;
             context.clock.framerate.counter = 0;
         }
@@ -2084,7 +2077,7 @@ void game_update(void) {
 
                 // physics
                 actor_t *actors[] = {&context.game.player, &context.game.enemy};
-                for (uint32_t i = 0; i < GAME_LEVEL_BULLET_ARRAY_SIZE; i++) {
+                for (u32 i = 0; i < GAME_LEVEL_BULLET_ARRAY_SIZE; i++) {
                     if (context.game.level.bullets[i].used) {
                         if (context.game.level.bullets[i].coll.max.x < 0 || context.game.level.bullets[i].pos.x > WINDOW_WIDTH) {
                             context.game.level.bullets[i].used = 0;
@@ -2095,7 +2088,7 @@ void game_update(void) {
                     }
                 }
 
-                for (uint32_t i = 0; i < GAME_LEVEL_PARTICLE_ARRAY_SIZE; i++) {
+                for (u32 i = 0; i < GAME_LEVEL_PARTICLE_ARRAY_SIZE; i++) {
                     if (context.game.level.particles[i].used) {
                         context.game.level.particles[i].pos.x += (context.game.level.particles[i].vel.x * GAME_SIMULATION_FIXED_TIMESTEP);
                         context.game.level.particles[i].pos.y += (context.game.level.particles[i].vel.y * GAME_SIMULATION_FIXED_TIMESTEP);
@@ -2105,10 +2098,10 @@ void game_update(void) {
                 }
 
                 if (!context.game.player.alive && context.game.player.effects[0] < 1.0f) {
-                    context.game.player.effects[0] += ((float) context.clock.dt * 2.0f);
+                    context.game.player.effects[0] += ((f32) context.clock.dt * 2.0f);
                 }
                 if (!context.game.enemy.alive && context.game.enemy.effects[0] < 1.0f) {
-                    context.game.enemy.effects[0] += ((float) context.clock.dt * 2.0f);
+                    context.game.enemy.effects[0] += ((f32) context.clock.dt * 2.0f);
                 }
 
                 // ml
@@ -2132,12 +2125,12 @@ void game_update(void) {
                 if ((!context.game.player.alive || !context.game.enemy.alive) && (!context.game.player.animation.lock && !context.game.enemy.animation.lock)) {
 
                     if (context.game.player.traject.steps > 0) {
-                        float term = context.ml.capped ? -10.0f : (context.game.player.alive ? (context.game.enemy.alive ? 0.0f : 150.0f) : -50.0f);
+                        f32 term = context.ml.capped ? -10.0f : (context.game.player.alive ? (context.game.enemy.alive ? 0.0f : 150.0f) : -50.0f);
                         context.game.player.traject.rewards[context.game.player.traject.steps - 1] += term;
                         ml_network_episode_train(&context.ml.network, context.ml.region, &context.game.player.traject);
                     }
                     if (context.game.enemy.traject.steps > 0) {
-                        float term = context.ml.capped ? -10.0f : (context.game.enemy.alive ? (context.game.player.alive ? 0.0f : 150.0f) : -50.0f);
+                        f32 term = context.ml.capped ? -10.0f : (context.game.enemy.alive ? (context.game.player.alive ? 0.0f : 150.0f) : -50.0f);
                         context.game.enemy.traject.rewards[context.game.enemy.traject.steps - 1] += term;
                         ml_network_episode_train(&context.ml.network, context.ml.region, &context.game.enemy.traject);
                     }
@@ -2205,7 +2198,7 @@ void game_update(void) {
         // double alpha = context.clock.accum / GAME_SIMULATION_FIXED_TIMESTEP;
 
         // RENDERER
-        static uint32_t fastforward = 0;
+        static u32 fastforward = 0;
         fastforward++;
 
         if (fastforward % 10 == 0) {
@@ -2256,7 +2249,7 @@ void game_update(void) {
             });
 
             // bullet
-            for (uint32_t i = 0; i < GAME_LEVEL_BULLET_ARRAY_SIZE; i++) {
+            for (u32 i = 0; i < GAME_LEVEL_BULLET_ARRAY_SIZE; i++) {
                 if (context.game.level.bullets[i].used) {
                     renderer_frame_command_push(&context.renderer, (command_t) {
                         .type = COMMAND_TYPE_SPRITE,
@@ -2276,7 +2269,7 @@ void game_update(void) {
             }
 
             // particle
-            for (uint32_t i = 0; i < GAME_LEVEL_PARTICLE_ARRAY_SIZE; i++) {
+            for (u32 i = 0; i < GAME_LEVEL_PARTICLE_ARRAY_SIZE; i++) {
                 if (context.game.level.particles[i].used) {
                     renderer_frame_command_push(&context.renderer, (command_t) {
                         .type = COMMAND_TYPE_SPRITE,
@@ -2299,7 +2292,7 @@ void game_update(void) {
             if (context.game.player.alive || context.game.player.animation.lock) {
 
                 // TEMP
-                uint8_t action = (context.game.player.action == ACTOR_ACTION_CROUCH) ? 4 : (context.game.player.action == ACTOR_ACTION_RUN) ? 3 : (context.game.player.action == ACTOR_ACTION_DOUBLE_JUMP) ? 2 : (context.game.player.action == ACTOR_ACTION_JUMP) ? 1 : (context.game.player.action == ACTOR_ACTION_DASH) ? 5 : (context.game.player.action == ACTOR_ACTION_DEATH) ? 7 : 0;
+                u8 action = (context.game.player.action == ACTOR_ACTION_CROUCH) ? 4 : (context.game.player.action == ACTOR_ACTION_RUN) ? 3 : (context.game.player.action == ACTOR_ACTION_DOUBLE_JUMP) ? 2 : (context.game.player.action == ACTOR_ACTION_JUMP) ? 1 : (context.game.player.action == ACTOR_ACTION_DASH) ? 5 : (context.game.player.action == ACTOR_ACTION_DEATH) ? 7 : 0;
                 // TEMP
 
                 renderer_frame_command_push(&context.renderer, (command_t) {
@@ -2339,7 +2332,7 @@ void game_update(void) {
             if (context.game.enemy.alive || context.game.enemy.animation.lock) {
 
                 // TEMP
-                uint8_t action = (context.game.enemy.action == ACTOR_ACTION_CROUCH) ? 4 : (context.game.enemy.action == ACTOR_ACTION_RUN) ? 3 : (context.game.enemy.action == ACTOR_ACTION_DOUBLE_JUMP) ? 2 : (context.game.enemy.action == ACTOR_ACTION_JUMP) ? 1 : (context.game.enemy.action == ACTOR_ACTION_DASH) ? 5 : (context.game.enemy.action == ACTOR_ACTION_DEATH) ? 7 : 0;
+                u8 action = (context.game.enemy.action == ACTOR_ACTION_CROUCH) ? 4 : (context.game.enemy.action == ACTOR_ACTION_RUN) ? 3 : (context.game.enemy.action == ACTOR_ACTION_DOUBLE_JUMP) ? 2 : (context.game.enemy.action == ACTOR_ACTION_JUMP) ? 1 : (context.game.enemy.action == ACTOR_ACTION_DASH) ? 5 : (context.game.enemy.action == ACTOR_ACTION_DEATH) ? 7 : 0;
                 // TEMP
 
                 renderer_frame_command_push(&context.renderer, (command_t) {
@@ -2383,30 +2376,30 @@ void game_update(void) {
             command.zorder = 4;
             command.flip = 0;
 
-            command.pos = vec2(16.0f, (float) (WINDOW_HEIGHT - 16.0f));
+            command.pos = vec2(16.0f, (f32) (WINDOW_HEIGHT - 16.0f));
             sprintf(command.data.text.content, "GAME TURN %u", context.game.level.turn);
             renderer_frame_command_push(&context.renderer, command);
 
-            command.pos = vec2(16.0f, (float) (WINDOW_HEIGHT - 32.0f));
+            command.pos = vec2(16.0f, (f32) (WINDOW_HEIGHT - 32.0f));
             sprintf(command.data.text.content, "PLAYER    %u/%u [K/D]", context.game.player.kills, context.game.player.deaths);
             renderer_frame_command_push(&context.renderer, command);
 
-            command.pos = vec2(16.0f, (float) (WINDOW_HEIGHT - 48.0f));
+            command.pos = vec2(16.0f, (f32) (WINDOW_HEIGHT - 48.0f));
             sprintf(command.data.text.content, "ENEMY     %u/%u [K/D]", context.game.enemy.kills, context.game.enemy.deaths);
             renderer_frame_command_push(&context.renderer, command);
 
-            uint16_t offset = 0;
+            u16 offset = 0;
             if (context.clock.framerate.value >= 10000) offset = (9.0f * FONT_WIDTH * 2.0f) + 16.0f;
             else if (context.clock.framerate.value >= 1000 && context.clock.framerate.value < 10000) offset = (8.0f * FONT_WIDTH * 2.0f) + 16.0f;
             else if (context.clock.framerate.value >= 100 && context.clock.framerate.value < 1000) offset = (7.0f * FONT_WIDTH * 2.0f) + 16.0f;
             else if (context.clock.framerate.value < 100) offset = (6.0f * FONT_WIDTH * 2.0f) + 16.0f;
 
-            command.pos = vec2((float) WINDOW_WIDTH - offset, (float) (WINDOW_HEIGHT - 16.0f));
+            command.pos = vec2((f32) WINDOW_WIDTH - offset, (f32) (WINDOW_HEIGHT - 16.0f));
             sprintf(command.data.text.content, "FPS %u", context.clock.framerate.value);
             renderer_frame_command_push(&context.renderer, command);
 
             if (context.game.state == GAME_STATE_PAUSE) {
-                command.pos = vec2(((float) (WINDOW_WIDTH * 0.5f) - (9.0f * FONT_WIDTH * 2.0f)), (float) WINDOW_HEIGHT * 0.5f);
+                command.pos = vec2(((f32) (WINDOW_WIDTH * 0.5f) - (9.0f * FONT_WIDTH * 2.0f)), (f32) WINDOW_HEIGHT * 0.5f);
                 sprintf(command.data.text.content, "PRESS 'R' TO START"); // or resume
                 renderer_frame_command_push(&context.renderer, command);
             }
@@ -2425,26 +2418,23 @@ void game_update(void) {
 }
 
 void game_stop(void) { // first part is probably redundant
-
     renderer_destroy(&context.renderer);
 
-    for (uint32_t i = 0; i < GAME_RESOURCES_TEXTURE_ARRAY_SIZE; i++) {
+    for (u32 i = 0; i < GAME_RESOURCES_TEXTURE_ARRAY_SIZE; i++) {
         if (context.res.textures[i].id) texture_destroy(&context.res.textures[i]);
     }
 
-    for (uint32_t i = 0; i < GAME_RESOURCES_SHADER_ARRAY_SIZE; i++) {
+    for (u32 i = 0; i < GAME_RESOURCES_SHADER_ARRAY_SIZE; i++) {
         if (context.res.shaders[i].program) shader_destroy(&context.res.shaders[i]);
     }
 
     glfwDestroyWindow(context.sys.window);
     glfwTerminate();
-
 }
 
 // MAIN
 
-int32_t main(void) {
-
+int main(void) {
     game_init();
     game_update();
     game_stop();
