@@ -277,7 +277,8 @@ shader_status_t shader_set_mat4(const shader_t *shader, const char *name, const 
 
 typedef enum {
     TEXTURE_STATUS_SUCCESS = 0,
-    TEXTURE_STATUS_FILE_NOT_FOUND
+    TEXTURE_STATUS_FILE_NOT_FOUND,
+    TEXTURE_STATUS_INVALID_PARAMETER
 } texture_status_t;
 
 typedef struct {
@@ -286,7 +287,7 @@ typedef struct {
     i32 format;
 } texture_t;
 
-void texture_init(texture_t *texture, char *path) {
+texture_status_t texture_init(texture_t *texture, char *path) {
     glGenTextures(1, &texture->id);
     glBindTexture(GL_TEXTURE_2D, texture->id);
 
@@ -316,12 +317,24 @@ void texture_init(texture_t *texture, char *path) {
     stbi_image_free(pixels);
 }
 
-void texture_bind(texture_t *texture) {
+texture_status_t texture_bind(texture_t *texture) {
+    if (!ASSERT(texture != NULL)) {
+        return TEXTURE_STATUS_INVALID_PARAMETER;
+    }
+    
     glBindTexture(GL_TEXTURE_2D, texture->id);
+
+    return TEXTURE_STATUS_SUCCESS;
 }
 
-void texture_destroy(texture_t *texture) {
+texture_status_t texture_destroy(texture_t *texture) { // it should destroy whole array instead of one (i assume)
+    if (!ASSERT(texture != NULL)) {
+        return TEXTURE_STATUS_INVALID_PARAMETER;
+    }
+
     glDeleteTextures(1, &texture->id);
+
+    return TEXTURE_STATUS_SUCCESS;
 }
 
 // SPRITE
@@ -1916,29 +1929,29 @@ void game_init(void) {
 
     // TODO read it auto, and search it by name (only in init)
     context.res.textures = mem_arena_alloc(&context.arena, GAME_RESOURCES_TEXTURE_ARRAY_SIZE * sizeof(texture_t));
-    texture_init(&context.res.textures[0], "res/texture/mutiny.png");
-    texture_init(&context.res.textures[1], "res/texture/bullet.png");
-    texture_init(&context.res.textures[2], "res/texture/gun.png");
+    if (texture_init(&context.res.textures[0], "res/texture/mutiny.png") != TEXTURE_STATUS_SUCCESS) {}
+    if (texture_init(&context.res.textures[1], "res/texture/bullet.png") != TEXTURE_STATUS_SUCCESS) {}
+    if (texture_init(&context.res.textures[2], "res/texture/gun.png") != TEXTURE_STATUS_SUCCESS) {}
 
-    texture_init(&context.res.textures[3], "res/texture/level/tile.png");
+    if (texture_init(&context.res.textures[3], "res/texture/level/tile.png") != TEXTURE_STATUS_SUCCESS) {}
 
-    texture_init(&context.res.textures[4], "res/texture/player/punk_idle-comp.png");
-    texture_init(&context.res.textures[5], "res/texture/player/punk_jump.png");
-    texture_init(&context.res.textures[6], "res/texture/player/punk_double_jump-comp.png");
-    texture_init(&context.res.textures[7], "res/texture/player/punk_run-comp.png");
-    texture_init(&context.res.textures[8], "res/texture/player/punk_crouch-2.png");
-    texture_init(&context.res.textures[9], "res/texture/player/punk_dash-comp.png");
-    texture_init(&context.res.textures[10], "res/texture/player/punk_attack.png");
-    texture_init(&context.res.textures[11], "res/texture/player/punk_death.png");
+    if (texture_init(&context.res.textures[4], "res/texture/player/punk_idle-comp.png") != TEXTURE_STATUS_SUCCESS) {}
+    if (texture_init(&context.res.textures[5], "res/texture/player/punk_jump.png") != TEXTURE_STATUS_SUCCESS) {}
+    if (texture_init(&context.res.textures[6], "res/texture/player/punk_double_jump-comp.png") != TEXTURE_STATUS_SUCCESS) {}
+    if (texture_init(&context.res.textures[7], "res/texture/player/punk_run-comp.png") != TEXTURE_STATUS_SUCCESS) {}
+    if (texture_init(&context.res.textures[8], "res/texture/player/punk_crouch-2.png") != TEXTURE_STATUS_SUCCESS) {}
+    if (texture_init(&context.res.textures[9], "res/texture/player/punk_dash-comp.png") != TEXTURE_STATUS_SUCCESS) {}
+    if (texture_init(&context.res.textures[10], "res/texture/player/punk_attack.png") != TEXTURE_STATUS_SUCCESS) {}
+    if (texture_init(&context.res.textures[11], "res/texture/player/punk_death.png") != TEXTURE_STATUS_SUCCESS) {}
 
-    texture_init(&context.res.textures[12], "res/texture/enemy/cyborg_idle-comp.png"); 
-    texture_init(&context.res.textures[13], "res/texture/enemy/cyborg_jump.png");
-    texture_init(&context.res.textures[14], "res/texture/enemy/cyborg_double_jump-comp.png");
-    texture_init(&context.res.textures[15], "res/texture/enemy/cyborg_run-comp.png");
-    texture_init(&context.res.textures[16], "res/texture/enemy/cyborg_crouch-2.png");
-    texture_init(&context.res.textures[17], "res/texture/enemy/cyborg_dash-comp.png");
-    texture_init(&context.res.textures[18], "res/texture/enemy/cyborg_attack.png");
-    texture_init(&context.res.textures[19], "res/texture/enemy/cyborg_death-comp.png");
+    if (texture_init(&context.res.textures[12], "res/texture/enemy/cyborg_idle-comp.png") != TEXTURE_STATUS_SUCCESS) {}
+    if (texture_init(&context.res.textures[13], "res/texture/enemy/cyborg_jump.png") != TEXTURE_STATUS_SUCCESS) {}
+    if (texture_init(&context.res.textures[14], "res/texture/enemy/cyborg_double_jump-comp.png") != TEXTURE_STATUS_SUCCESS) {}
+    if (texture_init(&context.res.textures[15], "res/texture/enemy/cyborg_run-comp.png") != TEXTURE_STATUS_SUCCESS) {}
+    if (texture_init(&context.res.textures[16], "res/texture/enemy/cyborg_crouch-2.png") != TEXTURE_STATUS_SUCCESS) {}
+    if (texture_init(&context.res.textures[17], "res/texture/enemy/cyborg_dash-comp.png") != TEXTURE_STATUS_SUCCESS) {}
+    if (texture_init(&context.res.textures[18], "res/texture/enemy/cyborg_attack.png") != TEXTURE_STATUS_SUCCESS) {}
+    if (texture_init(&context.res.textures[19], "res/texture/enemy/cyborg_death-comp.png") != TEXTURE_STATUS_SUCCESS) {}
 
     // RENDERER
     context.renderer.frame.commands = mem_arena_alloc(&context.arena, RENDERER_COMMAND_ARRAY_SIZE * sizeof(command_t));
