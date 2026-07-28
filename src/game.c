@@ -1123,6 +1123,14 @@ typedef enum {
 } game_controller_t;
 
 typedef struct {
+    v3 pos, tpos, hpos;
+    f32 yaw, pitch;
+    f32 mx, my;
+    f32 speed, sens;
+    u8 lock;
+} game_camera_t;
+
+typedef struct {
     v2 vel, force;
     f32 mass, grav;
     f32 fric, drag;
@@ -1283,6 +1291,7 @@ static struct {
     struct {
         game_state_t state;
         game_controller_t controller;
+        game_camera_t camera;
 
         struct {
             sprite_t *sprites;
@@ -1759,14 +1768,13 @@ void game_ml_step(actor_t *actor, actor_t *enemy, ml_trajectory_t *traject, i8 q
     ml_trajectory_step_add(traject, &state, actions, reward);
 }
 
-void _game_win32_icon_init(void) {
-    const char *path = "res/texture/icon.png";
+void _game_window_icon_init(void) {
+    const char *path = "res/arena.png";
     i32 width, height, channels;
     unsigned char *pixels = stbi_load(path, &width, &height, &channels, 0);
     if (!ASSERT(pixels != NULL)) {
-        // do smth
+        return;
     }
-    // ASSERT(pixels, "ICON_READ_ERROR: %s", path);
 
     GLFWimage images[1] = {(GLFWimage) {.width = width, .height = height, .pixels = pixels}};
     glfwSetWindowIcon(context.sys.window, 1, images);
@@ -1883,6 +1891,9 @@ void game_init(void) {
     glfwWindowHint(GLFW_COCOA_RETINA_FRAMEBUFFER, GL_FALSE);
 #endif
     glfwWindowHint(GLFW_RESIZABLE, GL_FALSE);
+    glfwWindowHintString(GLFW_X11_CLASS_NAME, "arena");
+    glfwWindowHintString(GLFW_X11_INSTANCE_NAME, "arena");
+    glfwWindowHintString(GLFW_WAYLAND_APP_ID, "arena");
 
     context.sys.window = glfwCreateWindow(WINDOW_WIDTH, WINDOW_HEIGHT, WINDOW_NAME, NULL, NULL);
     if (!ASSERT(context.sys.window != NULL)) {
@@ -1892,8 +1903,8 @@ void game_init(void) {
     glfwMakeContextCurrent(context.sys.window);
     glfwSetKeyCallback(context.sys.window, _game_keyboard_callback);
     // glfwSetInputMode(context.sys.window, GLFW_CURSOR, GLFW_CURSOR_DISABLED);
-    // glfwSwapInterval(1);
-    glfwSwapInterval(0);
+    glfwSwapInterval(1);
+    // glfwSwapInterval(0);
 
     // GLEW
 #ifndef __APPLE__
@@ -1909,15 +1920,12 @@ void game_init(void) {
     // glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
     glViewport(0, 0, WINDOW_WIDTH, WINDOW_HEIGHT);
     glEnable(GL_BLEND);
+    // glEnable(GL_DEPTH_TEST);
     glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
     glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
 
     // ICON
-#ifdef _WIN32
-    _game_win32_icon_init();
-#else
-    // handle it in the build script
-#endif
+    _game_window_icon_init();
 
     // MEMORY
     mem_arena_init(&context.arena, &GAME_MEMORY, GAME_MEMORY_CAPACITY);
@@ -1949,7 +1957,7 @@ void game_init(void) {
 
     if (texture_init(&context.res.textures[4], "res/texture/player/punk_idle-comp.png") != TEXTURE_STATUS_SUCCESS) {}
     if (texture_init(&context.res.textures[5], "res/texture/player/punk_jump.png") != TEXTURE_STATUS_SUCCESS) {}
-    if (texture_init(&context.res.textures[6], "res/texture/player/punk_f64_jump-comp.png") != TEXTURE_STATUS_SUCCESS) {}
+    if (texture_init(&context.res.textures[6], "res/texture/player/punk_double_jump-comp.png") != TEXTURE_STATUS_SUCCESS) {}
     if (texture_init(&context.res.textures[7], "res/texture/player/punk_run-comp.png") != TEXTURE_STATUS_SUCCESS) {}
     if (texture_init(&context.res.textures[8], "res/texture/player/punk_crouch-2.png") != TEXTURE_STATUS_SUCCESS) {}
     if (texture_init(&context.res.textures[9], "res/texture/player/punk_dash-comp.png") != TEXTURE_STATUS_SUCCESS) {}
@@ -1958,7 +1966,7 @@ void game_init(void) {
 
     if (texture_init(&context.res.textures[12], "res/texture/enemy/cyborg_idle-comp.png") != TEXTURE_STATUS_SUCCESS) {}
     if (texture_init(&context.res.textures[13], "res/texture/enemy/cyborg_jump.png") != TEXTURE_STATUS_SUCCESS) {}
-    if (texture_init(&context.res.textures[14], "res/texture/enemy/cyborg_f64_jump-comp.png") != TEXTURE_STATUS_SUCCESS) {}
+    if (texture_init(&context.res.textures[14], "res/texture/enemy/cyborg_double_jump-comp.png") != TEXTURE_STATUS_SUCCESS) {}
     if (texture_init(&context.res.textures[15], "res/texture/enemy/cyborg_run-comp.png") != TEXTURE_STATUS_SUCCESS) {}
     if (texture_init(&context.res.textures[16], "res/texture/enemy/cyborg_crouch-2.png") != TEXTURE_STATUS_SUCCESS) {}
     if (texture_init(&context.res.textures[17], "res/texture/enemy/cyborg_dash-comp.png") != TEXTURE_STATUS_SUCCESS) {}
@@ -1973,6 +1981,13 @@ void game_init(void) {
     context.game.state = GAME_STATE_LOAD;
     context.game.controller = GAME_CONTROLLER_AUTO;
     // context.game.controller = GAME_CONTROLLER_MANUAL;
+    context.game.camera.pos = vec3(0.0f, 0.0f, 8.0f);
+    context.game.camera.tpos = vec3(0.0f, 0.0f, -1.0f);
+    context.game.camera.hpos = vec3(0.0f, 1.0f, 0.0f);
+    context.game.camera.yaw = -90.0f;
+    context.game.camera.pitch = 0.0f;
+    context.game.camera.speed = 4.0f;
+    context.game.camera.sens = 0.2f;
     context.game.level.sprites = mem_arena_alloc(&context.arena, GAME_LEVEL_SPRITE_ARRAY_SIZE * sizeof(sprite_t));
     context.game.level.bullets = mem_arena_alloc(&context.arena, GAME_LEVEL_BULLET_ARRAY_SIZE * sizeof(bullet_t));
     for (u32 i = 0; i < GAME_LEVEL_BULLET_ARRAY_SIZE; i++) context.game.level.bullets[i] = (bullet_t) {0}; // is there a cooler way to init this?

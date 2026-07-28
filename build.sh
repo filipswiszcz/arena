@@ -40,13 +40,13 @@ $CC "${FLAGS[@]}" \
     -I./lib \
     src/game.c \
     "${LIBS[@]}" \
-    -o build/game
+    -o build/arena
 
-rm -f bin/game
+rm -f bin/arena
 rm -rf bin/res
 
 if [ "$MODE" = "release" ]; then
-    cp -f build/game bin/
+    cp -f build/arena bin/
     if [ -d "res" ]; then
         if command -v rsync >/dev/null 2>&1; then
             rsync -av --delete res/ bin/res/ >/dev/null
@@ -54,9 +54,27 @@ if [ "$MODE" = "release" ]; then
             cp -R res bin/res
         fi
     fi
+
+    if [ "$(uname)" == "Linux" ]; then
+        mkdir -p $HOME/.local/share/applications
+        mkdir -p $HOME/.local/share/icons
+        cp -f bin/res/arena.png $HOME/.local/share/icons/arena.png
+
+        cat > $HOME/.local/share/applications/arena.desktop << EOF
+[Desktop Entry]
+Type=Application
+Name=Arena
+Exec=$(pwd)/bin/arena
+Icon=$HOME/.local/share/icons/arena.png
+Terminal=false
+Categories=Game;
+StartupWMClass=arena
+EOF
+
+        update-desktop-database $HOME/.local/share/applications
+    fi
 else
-    # Fixed typo from 'egine' to 'game'
-    ln -sf ../build/game bin/game
+    ln -sf ../build/arena bin/arena
     if [ -d "res" ]; then
         ln -s ../res bin/res
     fi
