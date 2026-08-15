@@ -20,7 +20,7 @@
 
 #define WINDOW_WIDTH 800
 #define WINDOW_HEIGHT 600
-#define WINDOW_NAME "BattleArena 2D (Build v0.1.2)"
+#define WINDOW_NAME "BattleArena 2D (Build v0.1.4)"
 
 #define LOG(_m, ...) ((void) 0)
 #define ASSERT(_e) ((_e) ? 1 : (LOG("%s,%d: Assertion '%s' failed\n", __FILE__, __LINE__, #_e), 0))
@@ -64,11 +64,11 @@ STATIC_ASSERT(sizeof(m4) == 64, "Mat4 must be exactly 64 bytes");
 
 // UTIL
 
-static inline f32 random(void) {
-    static i8 init = 0;
-    if (!init) {srand((unsigned) time(NULL)); init = 1;}
-    return (f32) rand() / ((f32) RAND_MAX + 1.0f);
-}
+// static inline f32 random(void) {
+//     static i8 init = 0;
+//     if (!init) {srand((unsigned) time(NULL)); init = 1;}
+//     return (f32) rand() / ((f32) RAND_MAX + 1.0f);
+// }
 
 // SHADER
 
@@ -1350,18 +1350,18 @@ void game_particle_spawn(v2 pos, f32 direct, v3 color) {
 
             const f32 drag = 0.98f;
 
-            f32 angle = (random() * 30.0f - 15.0f) * (PI / 180.0f);
-            f32 speed = random() * 256.0f;
+            f32 angle = (ml_random() * 30.0f - 15.0f) * (PI / 180.0f);
+            f32 speed = ml_random() * 256.0f;
 
             f32 vx = (cosf(angle) * speed * direct) * drag;
             f32 vy = (sinf(angle) * speed) * drag;
 
             context.game.level.particles[j] = (particle_t) {
-                .pos = vec2(pos.x, pos.y + (random() * 4.0f - 2.0f)),
+                .pos = vec2(pos.x, pos.y + (ml_random() * 4.0f - 2.0f)),
                 .vel = vec2(vx, vy),
                 .color = color,
                 .start = 0.0f,
-                .end = (random() * 0.3f),
+                .end = (ml_random() * 0.3f),
                 .used = 1
             };
 
