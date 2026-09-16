@@ -6,6 +6,9 @@
 #include <libmem/mem.h>
 #include <libml/ml.h>
 
+#define MINIAUDIO_IMPLEMENTATION
+#include <miniaudio/miniaudio.h>
+
 #define STB_IMAGE_IMPLEMENTATION
 #include <stb/stb_image.h>
 
@@ -1289,6 +1292,11 @@ static struct {
     renderer_t renderer;
 
     struct {
+        ma_engine engine;
+        ma_sound sound;
+    } audio;
+
+    struct {
         game_state_t state;
         game_controller_t controller;
         game_camera_t camera;
@@ -1977,6 +1985,15 @@ void game_init(void) {
     context.renderer.frame.commands = mem_arena_alloc(&context.arena, RENDERER_COMMAND_ARRAY_SIZE * sizeof(command_t));
     renderer_init(&context.renderer, context.res.shaders);
 
+    // AUDIO    
+    if (ma_engine_init(NULL, &context.audio.engine) != MA_SUCCESS) {
+        printf("sound is fucked");
+    }
+
+    ma_sound_init_from_file(&context.audio.engine, "res/sound/soundtrack.mp3", 0, NULL, NULL, &context.audio.sound);
+    ma_sound_set_looping(&context.audio.sound, MA_TRUE);
+    ma_sound_start(&context.audio.sound);
+
     // GAME
     context.game.state = GAME_STATE_LOAD;
     context.game.controller = GAME_CONTROLLER_AUTO;
@@ -2459,6 +2476,9 @@ void game_update(void) {
 
 void game_stop(void) { // first part is probably redundant
     renderer_destroy(&context.renderer);
+
+    ma_sound_uninit(&context.audio.sound);
+    ma_engine_uninit(&context.audio.engine);
 
     for (u32 i = 0; i < GAME_RESOURCES_TEXTURE_ARRAY_SIZE; i++) {
         if (context.res.textures[i].id) texture_destroy(&context.res.textures[i]);

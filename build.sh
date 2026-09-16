@@ -6,7 +6,7 @@ if [ "$(uname)" == "Linux" ]; then
     LIBS=(-lglfw -lGLEW -lGL -lX11 -lpthread -ldl -lm)
     CC="gcc"
 elif [ "$(uname)" == "Darwin" ]; then
-    LIBS=(-lglfw -framework OpenGL -framework Cocoa -framework IOKit -framework CoreVideo)
+    LIBS=(-lglfw -framework OpenGL -framework Cocoa -framework IOKit -framework CoreVideo -framework CoreAudio -framework AudioToolbox -framework CoreFoundation)
     CC="clang"
 else
     echo "UNSUPPORTED OS"
